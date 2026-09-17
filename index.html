@@ -1142,99 +1142,62 @@
   };
 
 
-  /* ============================= GitHub ↔ Apps Script bridge ============================= */
+  /* ============================= GitHub ↔ Cloudflare API ============================= */
   /*
-   * Adaptador para que el Index original pueda seguir usando google.script.run
-   * aunque ahora esté alojado en GitHub Pages.
+   * El Index original puede seguir usando google.script.run.
+   * Este adaptador traduce esas llamadas a HTTP POST contra el Cloudflare Worker.
    */
-  var GH_BRIDGE_URL = 'https://script.google.com/macros/s/AKfycby5Xy-Rx1bOXKW7bVXtFYM6wYAJyQBgqx65WANlsZozj-IFXE6V1yBhBsyDTjHWdep-hg/exec?page=bridge';
+  var GH_API_URL = 'https://europa-2026-api.sol-ferrario-barrios.workers.dev';
   var GH_TOKEN_KEY = 'europa2026_gh_token';
-  var ghBridgeFrame = null;
-  var ghBridgeReady = null;
-  var ghPending = {};
 
-  function initGHBridge() {
-    if (ghBridgeReady) return ghBridgeReady;
-
-    ghBridgeReady = new Promise(function (resolve, reject) {
-      var iframe = document.createElement('iframe');
-      iframe.src = GH_BRIDGE_URL;
-      iframe.setAttribute('aria-hidden', 'true');
-      iframe.tabIndex = -1;
-      iframe.style.position = 'fixed';
-      iframe.style.width = '1px';
-      iframe.style.height = '1px';
-      iframe.style.opacity = '0';
-      iframe.style.pointerEvents = 'none';
-      iframe.style.border = '0';
-      iframe.style.left = '-9999px';
-
-      iframe.onload = function () {
-        ghBridgeFrame = iframe;
-        resolve();
-      };
-
-      iframe.onerror = function () {
-        reject(new Error('No se pudo cargar el puente con Apps Script'));
-      };
-
-      document.body.appendChild(iframe);
-    });
-
-    return ghBridgeReady;
-  }
-
-  window.addEventListener('message', function (event) {
-    if (!ghBridgeFrame || event.source !== ghBridgeFrame.contentWindow) return;
-
-    var message = event.data;
-    if (!message || message.source !== 'EUROPA_2026_GAS' || !message.requestId) return;
-
-    var pending = ghPending[message.requestId];
-    if (!pending) return;
-
-    delete ghPending[message.requestId];
-    clearTimeout(pending.timer);
-
-    if (message.ok) pending.resolve(message.result);
-    else pending.reject(new Error(message.error || 'Error de conexión con Apps Script'));
-  });
-
-  function apiGH(action, payload) {
+  async function apiGH(action, payload) {
     payload = payload || {};
+    var token = localStorage.getItem(GH_TOKEN_KEY) || null;
 
-    return initGHBridge().then(function () {
-      return new Promise(function (resolve, reject) {
-        var requestId = 'gh_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-        var token = localStorage.getItem(GH_TOKEN_KEY) || null;
-
-        var timer = setTimeout(function () {
-          delete ghPending[requestId];
-          reject(new Error('Apps Script tardó demasiado en responder'));
-        }, 30000);
-
-        ghPending[requestId] = { resolve: resolve, reject: reject, timer: timer };
-
-        ghBridgeFrame.contentWindow.postMessage({
-          source: 'EUROPA_2026_GH',
-          requestId: requestId,
-          action: action,
-          payload: payload,
-          token: token
-        }, '*');
-      });
-    }).then(function (result) {
-      if (action === 'login' && result && result.ok && result.token) {
-        localStorage.setItem(GH_TOKEN_KEY, result.token);
-      }
-      if (action === 'logout') {
-        localStorage.removeItem(GH_TOKEN_KEY);
-      }
-      if (result && result.error === 'login_required') {
-        localStorage.removeItem(GH_TOKEN_KEY);
-      }
-      return result;
+    var response = await fetch(GH_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        action: action,
+        payload: payload,
+        token: token
+      })
     });
+
+    var envelope;
+    try {
+      envelope = await response.json();
+    } catch (e) {
+      throw new Error('La API devolvió una respuesta inválida');
+    }
+
+    if (!response.ok) {
+      throw new Error(envelope.error || ('Error HTTP ' + response.status));
+    }
+
+    if (!envelope.ok) {
+      throw new Error(envelope.error || 'Error del servidor');
+    }
+
+    var result = envelope.result;
+
+    if (action === 'login' && result && result.ok && result.token) {
+      localStorage.setItem(GH_TOKEN_KEY, result.token);
+    }
+
+    if (action === 'logout') {
+      localStorage.removeItem(GH_TOKEN_KEY);
+    }
+
+    if (result && (result.error === 'login_required' || result.logged === false)) {
+      if (action !== 'login') {
+        localStorage.removeItem(GH_TOKEN_KEY);
+      }
+    }
+
+    return result;
   }
 
   function ghPayloadForCall(name, args) {
@@ -1299,6 +1262,7 @@
     ].forEach(function (name) {
       runner[name] = function () {
         var args = Array.prototype.slice.call(arguments);
+
         apiGH(name, ghPayloadForCall(name, args))
           .then(function (result) {
             if (typeof successHandler === 'function') successHandler(result);
@@ -1313,17 +1277,17 @@
     return runner;
   }
 
-  // Compatibilidad con el Index original: sus llamadas google.script.run
-  // se traducen automáticamente a apiCallGH() a través de Bridge.html.
+  // Capa de compatibilidad para no tener que reescribir todas las llamadas
+  // google.script.run existentes en el Index original.
   window.google = window.google || {};
   window.google.script = window.google.script || {};
+
   Object.defineProperty(window.google.script, 'run', {
     configurable: true,
     get: function () {
       return makeGoogleScriptRunnerGH(null, null);
     }
   });
-
 
   document.addEventListener('DOMContentLoaded', init);
 
