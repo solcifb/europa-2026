@@ -1,0 +1,2858 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <script>
+      (function () {
+        // Apps Script's HtmlService iframe wrapper can make CSS media queries unreliable;
+        // drive breakpoints from actual measured width instead.
+        function updateBreakpoints() {
+          var w = (window.visualViewport && window.visualViewport.width) ||
+            document.documentElement.clientWidth || window.innerWidth || 0;
+          var c = document.documentElement.classList;
+          c.toggle('bp-tablet', w >= 600);
+          c.toggle('bp-desktop', w >= 1000);
+          c.toggle('bp-desktop-lg', w >= 1440);
+        }
+        updateBreakpoints();
+        window.addEventListener('resize', updateBreakpoints);
+        window.addEventListener('orientationchange', updateBreakpoints);
+        document.addEventListener('DOMContentLoaded', updateBreakpoints);
+        window.addEventListener('load', updateBreakpoints);
+        // Apps Script iframe can settle its final size slightly after load; re-check shortly after.
+        setTimeout(updateBreakpoints, 300);
+        setTimeout(updateBreakpoints, 1000);
+      })();
+    </script>
+    <style>
+  :root {
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+
+  [data-lucide] { display: inline-block !important; vertical-align: middle; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+    background: #e9e4d8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  #app-frame {
+    --bg: #f6f2ea;
+    --surface: #ffffff;
+    --text: #1c2333;
+    --text-muted: #767c8c;
+    --primary: #1c2333;
+    --primary-contrast: #ffffff;
+    --accent: #e2664a;
+    --accent-soft: #fce8df;
+    --border: #e9e3d6;
+    --shadow: 0 10px 30px rgba(28,35,51,0.10);
+    --nav-height: 64px;
+    --topbar-height: 52px;
+
+    max-width: 480px;
+    margin: 0 auto;
+    height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  #app-frame[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #11151f;
+    --surface: #1b2233;
+    --text: #f2f0ea;
+    --text-muted: #9aa0ad;
+    --primary: #f2f0ea;
+    --primary-contrast: #11151f;
+    --accent: #f08a6c;
+    --accent-soft: #3a2620;
+    --border: #2a3142;
+    --shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
+
+  /* ---------- Custom Scrollbars ---------- */
+  #view-container, .search-results, .overlay-panel {
+    scrollbar-width: thin;
+    scrollbar-color: #c5bead transparent;
+  }
+  #view-container::-webkit-scrollbar,
+  .search-results::-webkit-scrollbar,
+  .overlay-panel::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  #view-container::-webkit-scrollbar-track,
+  .search-results::-webkit-scrollbar-track,
+  .overlay-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  #view-container::-webkit-scrollbar-thumb,
+  .search-results::-webkit-scrollbar-thumb,
+  .overlay-panel::-webkit-scrollbar-thumb {
+    background: #c5bead;
+    border-radius: 999px;
+  }
+
+  #app-frame[data-theme="dark"] #view-container,
+  #app-frame[data-theme="dark"] .search-results,
+  #app-frame[data-theme="dark"] .overlay-panel {
+    scrollbar-color: #2a3142 transparent;
+  }
+  #app-frame[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: #2a3142;
+  }
+  #app-frame[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: #3a4358;
+  }
+
+  .topbar {
+    height: var(--topbar-height);
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    z-index: 5;
+  }
+  .topbar-title { font-weight: 700; font-size: 15px; flex: 1; text-align: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-right { display: flex; align-items: center; gap: 0; flex: 0 0 auto; }
+  .icon-btn {
+    border: none;
+    background: transparent;
+    padding: 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn i,
+  .icon-btn svg { width: 20px; height: 20px; color: inherit; stroke: currentColor; }
+  .icon-btn:active { background: var(--border); }
+
+  #view-container {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .view-root { padding: 0 0 24px; min-height: 100%; }
+  .loading { padding: 60px 20px; text-align: center; color: var(--text-muted); }
+
+  /* ---------- Bottom nav ---------- */
+  .bottom-nav {
+    flex: 0 0 auto;
+    height: var(--nav-height);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    z-index: 5;
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 6px 0;
+  }
+  .nav-item .nav-icon { display: flex; align-items: center; justify-content: center; min-height: 19px; }
+  .nav-item .nav-icon i,
+  .nav-item .nav-icon svg { width: 19px; height: 19px; color: inherit; stroke: currentColor; display: block !important; visibility: visible !important; }
+  .nav-item.active { color: var(--accent); font-weight: 700; }
+  .nav-badge {
+    position: absolute; top: 2px; right: 50%; transform: translateX(14px);
+    background: #e2664a; color: #fff; font-size: 10px; font-weight: 800;
+    min-width: 16px; height: 16px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 4px; line-height: 1;
+  }
+  .nav-icon { position: relative; }
+
+  .check-done-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: #22c55e; color: #fff; font-size: 10px; font-weight: 800;
+    border-radius: 999px; padding: 3px 8px; margin-left: 6px;
+    vertical-align: middle;
+  }
+
+  .event-badges {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .check-status-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+    border-radius: 999px; padding: 4px 9px;
+  }
+  .check-status-badge.completed {
+    background: #dcfce7; color: #16a34a;
+  }
+  .check-status-badge.pending {
+    background: #f3f4f6; color: #6b7280;
+  }
+  .check-status-badge.discarded {
+    background: #fee2e2; color: #dc2626;
+  }
+  #app-frame[data-theme="dark"] .check-status-badge.completed {
+    background: #14532d; color: #4ade80;
+  }
+  #app-frame[data-theme="dark"] .check-status-badge.pending {
+    background: #374151; color: #9ca3af;
+  }
+  #app-frame[data-theme="dark"] .check-status-badge.discarded {
+    background: #450a0a; color: #f87171;
+  }
+
+  /* ---------- Checks view ---------- */
+  .checks-banner {
+    margin: 12px 20px; padding: 14px 16px; border-radius: 16px;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .checks-banner-icon { color: var(--accent); flex: 0 0 auto; }
+  .checks-banner-text { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .check-card {
+    display: flex; align-items: stretch; gap: 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 16px; margin: 0 20px 12px; overflow: hidden;
+  }
+  .check-card-icon {
+    width: 52px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .check-card-icon i, .check-card-icon svg { width: 22px; height: 22px; color: inherit; stroke: currentColor; }
+  .check-card-body { flex: 1; min-width: 0; padding: 14px 14px 14px 0; }
+  .check-card-type { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin-bottom: 4px; }
+  .check-card-title { font-weight: 700; font-size: 15px; margin-bottom: 2px; }
+  .check-card-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .check-card-time { font-size: 12px; font-weight: 700; color: var(--accent); }
+  .check-card-actions { padding: 0 14px; display: flex; flex-direction: column; gap: 6px; align-items: stretch; justify-content: center; }
+  .check-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 12px;
+    padding: 8px 14px; font-size: 12px; font-weight: 800; cursor: pointer;
+    white-space: nowrap;
+  }
+  .check-btn.discard {
+    background: transparent; color: var(--text-muted); border: 1px solid var(--border);
+  }
+  .check-btn:active { opacity: .8; }
+  .check-empty { padding: 60px 20px; text-align: center; color: var(--text-muted); font-size: 14px; }
+
+  /* ---------- Hero (Inicio) ---------- */
+  .hero {
+    position: relative;
+    height: 260px;
+    color: #fff;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: flex-end;
+    padding: 20px 20px 22px;
+  }
+  .hero::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(20,24,35,0.15) 0%, rgba(15,18,28,0.85) 100%);
+  }
+  .hero-content { position: relative; z-index: 1; }
+  .hero-label {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 11px;
+    opacity: .85;
+    margin-bottom: 4px;
+  }
+  .hero-title { font-size: 34px; font-weight: 800; line-height: 1.05; margin: 0 0 6px; }
+  .hero-subtitle { font-size: 14px; opacity: .9; display: flex; align-items: center; gap: 6px; }
+  .hero-subtitle i, .hero-subtitle svg { width: 14px; height: 14px; color: inherit; stroke: currentColor; }
+
+  .info-strip {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; background: var(--bg);
+  }
+  .info-strip .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+  .info-strip .value { font-weight: 700; font-size: 14px; margin-top: 2px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  }
+
+  .progress-wrap { padding: 4px 20px 16px; }
+  .progress-label { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+  .progress-bar { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s; }
+
+  /* ---------- Day grid / selector ---------- */
+  .day-grid {
+    display: flex; gap: 10px; overflow-x: auto; padding: 4px 20px 18px;
+    scrollbar-width: none; scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .day-grid::-webkit-scrollbar { display: none; }
+  .day-pill {
+    flex: 0 0 auto;
+    width: 64px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 10px 6px 8px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--text);
+    scroll-snap-align: center;
+  }
+  .day-pill.selected {
+    background: var(--primary);
+    color: var(--primary-contrast);
+    border-color: var(--primary);
+  }
+  .day-pill .dow { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; opacity: .75; }
+  .day-pill .num { font-size: 20px; font-weight: 800; margin: 2px 0; }
+  .day-pill .dtag { font-size: 10px; opacity: .75; }
+  .day-pill .badges { margin-top: 4px; font-size: 11px; min-height: 14px; }
+
+  .section-title {
+    font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--text-muted); padding: 6px 20px;
+  }
+
+  /* ---------- Destino strip ---------- */
+  .destino-strip { display: flex; gap: 12px; overflow-x: auto; padding: 4px 20px 20px; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+  .destino-strip::-webkit-scrollbar { display: none; }
+  .destino-card {
+    flex: 0 0 auto; width: 130px; height: 90px; border-radius: 16px; position: relative;
+    background-size: cover; background-position: center; color: #fff; overflow: hidden; cursor: pointer;
+    scroll-snap-align: center;
+  }
+  .destino-card::before { content:""; position:absolute; inset:0; background: linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,.65) 100%); }
+  .destino-card span { position: absolute; left: 10px; bottom: 8px; z-index: 1; font-weight: 700; font-size: 13px; }
+
+  /* ---------- Día view ---------- */
+  .day-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 12px; gap: 8px;
+  }
+  .day-header .nav-arrow {
+    border: none; background: var(--surface); border: 1px solid var(--border);
+    width: 38px; height: 38px; border-radius: 12px; cursor: pointer; color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .day-header .nav-arrow i,
+  .day-header .nav-arrow svg { width: 16px; height: 16px; color: inherit; stroke: currentColor; }
+  .day-header .nav-arrow:disabled { opacity: .3; cursor: default; }
+  .day-header .day-of-total { font-size: 12px; color: var(--text-muted); text-align: center; }
+  .day-header .day-of-total b { color: var(--text); }
+
+  .location-tag {
+    margin: 0 20px 8px;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--accent); font-weight: 700; font-size: 13px;
+  }
+  .day-date-title { padding: 0 20px 4px; font-size: 22px; font-weight: 800; }
+  .day-date-sub { padding: 0 20px 16px; color: var(--text-muted); font-size: 14px; }
+
+  .timeline { padding: 4px 20px 12px; }
+  .empty-day { padding: 40px 20px; text-align: center; color: var(--text-muted); }
+
+  .event-card {
+    display: flex; gap: 12px; margin-bottom: 16px; touch-action: pan-y;
+  }
+  .event-card.editable {
+    cursor: pointer; touch-action: manipulation;
+    -webkit-user-select: none; user-select: none;
+  }
+  .event-card.editable .event-body { -webkit-user-select: none; user-select: none; }
+  .event-card.editable:active .event-body { opacity: .85; }
+  .event-time-col { flex: 0 0 auto; width: 44px; display: flex; flex-direction: column; align-items: center; }
+  .event-icon {
+    width: 40px; height: 40px; border-radius: 50%; background: var(--surface);
+    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  }
+  .event-icon i,
+  .event-icon svg { width: 18px; height: 18px; color: inherit; stroke: currentColor; }
+  .event-line { flex: 1; width: 2px; background: var(--border); margin-top: 4px; }
+  .event-body {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+  }
+  .event-top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .event-time { color: var(--accent); font-weight: 800; font-size: 13px; }
+  .event-time .origin-time { color: var(--text-muted); font-weight: 600; font-size: 11px; margin-left: 6px; }
+  .event-type-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+    background: var(--accent-soft); color: var(--accent); padding: 4px 9px; border-radius: 999px;
+  }
+  .event-title { font-weight: 800; font-size: 15px; margin-bottom: 2px; }
+  .event-subtitle { color: var(--text-muted); font-size: 13px; margin-bottom: 8px; }
+  .event-endtime {
+    display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700;
+    color: var(--accent); margin-bottom: 6px;
+  }
+  .event-endtime i,
+  .event-endtime svg { width: 12px; height: 12px; color: inherit; stroke: currentColor; }
+  .event-note {
+    background: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 13px;
+    color: var(--text-muted); margin-bottom: 8px;
+  }
+  .event-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .action-chip {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 999px;
+    padding: 7px 12px; cursor: pointer; color: var(--text); text-decoration: none;
+  }
+  .action-chip i,
+  .action-chip svg { width: 14px; height: 14px; color: inherit; stroke: currentColor; }
+  .action-chip:active { background: var(--border); }
+
+  /* ---------- Plan view ---------- */
+  .filter-row { display: flex; gap: 8px; overflow-x: auto; padding: 10px 20px; scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface);
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--text);
+  }
+  .filter-chip.active { background: var(--primary); color: var(--primary-contrast); border-color: var(--primary); }
+
+  .plan-group { padding: 6px 20px 4px; }
+  .plan-group-title { font-size: 13px; font-weight: 800; color: var(--text-muted); margin: 14px 0 8px; }
+  .plan-item {
+    display: flex; align-items: center; gap: 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 16px; padding: 12px; margin-bottom: 10px; cursor: pointer;
+  }
+  .plan-item .event-icon { width: 36px; height: 36px; flex: 0 0 auto; }
+  .plan-item .event-icon i,
+  .plan-item .event-icon svg { width: 16px; height: 16px; color: inherit; stroke: currentColor; }
+  .plan-item .plan-info { flex: 1; min-width: 0; }
+  .plan-item .plan-title { font-weight: 700; font-size: 14px; }
+  .plan-item .plan-sub { color: var(--text-muted); font-size: 12px; }
+  .plan-item .plan-time { font-size: 12px; font-weight: 800; color: var(--accent); flex: 0 0 auto; }
+
+  /* ---------- Mapa tabs ---------- */
+  .mapa-tabs {
+    display: flex; gap: 0; margin: 10px 20px 6px; background: var(--border);
+    border-radius: 12px; padding: 3px;
+  }
+  .mapa-tab-btn {
+    flex: 1; border: none; background: transparent; padding: 9px 0; font-size: 13px;
+    font-weight: 700; border-radius: 10px; cursor: pointer; color: var(--text-muted);
+    transition: background .2s, color .2s;
+  }
+  .mapa-tab-btn.active {
+    background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  #mapa-leaflet {
+    margin: 8px 20px 10px; border-radius: 16px; overflow: hidden;
+    border: 1px solid var(--border); height: 420px; z-index: 1;
+  }
+
+  /* ---------- Mapa view ---------- */
+  .place-card {
+    display: flex; align-items: flex-start; gap: 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin: 0 20px 10px;
+  }
+  .place-icon {
+    width: 38px; height: 38px; border-radius: 50%; background: var(--accent-soft);
+    display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  }
+  .place-icon i,
+  .place-icon svg { width: 17px; height: 17px; color: var(--accent); stroke: currentColor; }
+  .place-name { font-weight: 700; font-size: 14px; }
+  .place-meta { font-size: 12px; color: var(--text-muted); margin: 2px 0 6px; }
+  .place-notes { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+
+  /* ---------- Docs view ---------- */
+  .doc-highlight {
+    margin: 6px 20px 18px; padding: 18px; border-radius: 20px;
+    background: var(--primary); color: #fff;
+  }
+  .doc-highlight .doc-tag { font-size: 11px; letter-spacing: .5px; text-transform: uppercase; opacity: .8; margin-bottom: 6px; }
+  .doc-highlight .doc-title { font-size: 17px; font-weight: 800; margin-bottom: 6px; }
+  .doc-highlight .doc-detail { font-size: 13px; opacity: .9; margin-bottom: 12px; }
+  .doc-highlight .action-chip {
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.3);
+    color: #fff;
+  }
+
+  #app-frame[data-theme="dark"] .doc-highlight {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  #app-frame[data-theme="dark"] .doc-highlight .doc-tag {
+    color: var(--accent);
+    opacity: 1;
+  }
+  #app-frame[data-theme="dark"] .doc-highlight .action-chip {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .doc-item {
+    display: flex; align-items: center; gap: 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 16px; padding: 13px; margin: 0 20px 10px;
+  }
+  .doc-item .doc-icon { flex: 0 0 auto; width: 30px; text-align: center; display: flex; align-items: center; justify-content: center; }
+  .doc-item .doc-icon i,
+  .doc-item .doc-icon svg { width: 20px; height: 20px; color: inherit; stroke: currentColor; }
+  .doc-item .doc-title2 { font-weight: 700; font-size: 14px; }
+  .doc-item .doc-detail2 { font-size: 12px; color: var(--text-muted); }
+
+  /* ---------- Overlays (search / settings) ---------- */
+  .overlay {
+    position: absolute; inset: 0; background: rgba(15,18,28,0.5);
+    display: flex; align-items: flex-end; z-index: 20;
+  }
+  .overlay.hidden { display: none; }
+  .overlay-panel {
+    background: var(--bg); width: 100%; max-height: 82%; border-radius: 22px 22px 0 0;
+    padding: 16px 20px 24px; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .overlay-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .overlay-title { font-weight: 800; font-size: 16px; flex: 1; }
+  #search-input {
+    flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 12px; padding: 12px 14px; font-size: 14px; outline: none;
+  }
+  .search-results { overflow-y: auto; }
+  .search-empty { color: var(--text-muted); padding: 20px 4px; font-size: 13px; text-align: center; }
+  .search-result-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); cursor: pointer;
+  }
+  .search-result-item .sr-title { font-weight: 700; font-size: 13px; }
+  .search-result-item .sr-sub { font-size: 12px; color: var(--text-muted); }
+
+  .settings-panel { gap: 4px; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 2px; border-bottom: 1px solid var(--border); }
+  .settings-label { font-weight: 700; font-size: 14px; }
+  .settings-hint { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .switch { position: relative; display: inline-block; width: 46px; height: 26px; flex: 0 0 auto; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch-track {
+    position: absolute; cursor: pointer; inset: 0; background: var(--border); border-radius: 999px; transition: .2s;
+  }
+  .switch-track::before {
+    content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: .2s;
+  }
+  .switch input:checked + .switch-track { background: var(--accent); }
+  .switch input:checked + .switch-track::before { transform: translateX(20px); }
+
+  .settings-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    outline: none;
+    cursor: pointer;
+  }
+  .tz-label {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    margin-left: 4px;
+  }
+
+  .btn-block {
+    margin-top: 16px; width: 100%; border: none; background: var(--primary); color: var(--primary-contrast);
+    padding: 14px; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;
+  }
+
+  /* ---------- Add form ---------- */
+  .add-form { display: flex; flex-direction: column; gap: 0; overflow-y: auto; flex: 1; }
+  .form-group { margin-bottom: 12px; }
+  .form-label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .3px; }
+  .form-input {
+    width: 100%; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none;
+  }
+  .form-input:focus { border-color: var(--accent); }
+  textarea.form-input { resize: vertical; min-height: 36px; }
+  select.form-input { cursor: pointer; }
+  .form-row { display: flex; gap: 10px; align-items: flex-end; }
+  .form-file { padding: 8px 10px; font-size: 12px; cursor: pointer; }
+  #btn-save-lugar, #btn-save-evento {
+    margin-top: 8px; width: 100%; border: none; background: var(--accent); color: #fff;
+    padding: 13px; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;
+  }
+  #btn-save-lugar:active, #btn-save-evento:active { opacity: .85; }
+
+  .toast {
+    position: absolute; left: 50%; bottom: calc(var(--nav-height) + 16px); transform: translateX(-50%);
+    background: var(--primary); color: var(--primary-contrast); padding: 10px 18px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; z-index: 30; box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  }
+  .toast.hidden { display: none; }
+
+  .login-screen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100%; padding: 20px;
+  }
+  .login-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 30px 24px; width: 100%; text-align: center;
+  }
+  .login-title { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+  .login-hint { font-size: 14px; color: var(--text-muted); margin-bottom: 20px; }
+  .login-error { color: var(--accent); font-size: 13px; margin-top: 10px; }
+  #login-input {
+    width: 100%; border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); border-radius: 12px; padding: 14px; font-size: 16px;
+    text-align: center; outline: none; margin-bottom: 16px; letter-spacing: 2px;
+  }
+
+  /* ========== TABLET ========== */
+  html.bp-tablet #app-frame { max-width: 100%; }
+  html.bp-tablet .topbar { padding: 0 16px; }
+  html.bp-tablet .topbar-title { font-size: 17px; }
+  html.bp-tablet .view-root { padding: 0 0 32px; }
+  html.bp-tablet .hero { height: 300px; }
+  html.bp-tablet .hero-title { font-size: 40px; }
+  html.bp-tablet .day-grid { gap: 12px; padding: 4px 24px 18px; }
+  html.bp-tablet .day-pill { width: 72px; padding: 12px 8px 10px; }
+  html.bp-tablet .destino-strip { gap: 16px; padding: 4px 24px 20px; }
+  html.bp-tablet .destino-card { width: 160px; height: 105px; }
+  html.bp-tablet .section-title { padding: 8px 24px; }
+  html.bp-tablet .filter-row { padding: 10px 24px; }
+  html.bp-tablet .place-card { margin: 0 24px 12px; padding: 16px; }
+  html.bp-tablet .check-card { margin: 0 24px 12px; }
+  html.bp-tablet .doc-highlight { margin: 8px 24px 20px; }
+  html.bp-tablet .doc-item { margin: 0 24px 12px; }
+  html.bp-tablet .plan-item { margin-bottom: 12px; }
+  html.bp-tablet .plan-group { padding: 8px 24px 4px; }
+  html.bp-tablet .event-card { gap: 14px; margin-bottom: 18px; }
+  html.bp-tablet .event-body { padding: 16px; }
+  html.bp-tablet #mapa-leaflet { height: 500px; }
+  html.bp-tablet .mapa-embed-wrap { margin: 8px 24px 12px; }
+  html.bp-tablet #add-overlay .overlay-panel, html.bp-tablet #edit-overlay .overlay-panel { max-width: 560px; margin: 0 auto; border-radius: 22px; }
+  html.bp-tablet .checks-banner { margin: 14px 24px; }
+  html.bp-tablet .info-strip { padding: 16px 24px; }
+  html.bp-tablet .location-tag { margin: 0 24px 10px; }
+  html.bp-tablet .day-date-title { padding: 0 24px 6px; font-size: 24px; }
+  html.bp-tablet .day-date-sub { padding: 0 24px 18px; }
+  html.bp-tablet .timeline { padding: 4px 24px 14px; }
+  html.bp-tablet .toast { bottom: calc(var(--nav-height) + 20px); }
+
+  /* ========== DESKTOP ========== */
+  html.bp-desktop, html.bp-desktop body { background: #1a1d28; }
+  html.bp-desktop #app-frame {
+    max-width: none;
+    height: 100vh;
+    flex-direction: column;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  html.bp-desktop #app-frame[data-theme="light"] { background: var(--bg); }
+  html.bp-desktop #app-frame[data-theme="dark"] { background: var(--bg); }
+
+  /* Sidebar nav */
+  html.bp-desktop .bottom-nav {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 68px;
+    height: auto;
+    flex-direction: column;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+    gap: 2px;
+    z-index: 10;
+  }
+  html.bp-desktop .nav-item { flex: none; padding: 10px 0; font-size: 9px; gap: 3px; width: 100%; }
+  html.bp-desktop .nav-item .nav-icon { min-height: 22px; }
+  html.bp-desktop .nav-item .nav-icon i,
+  html.bp-desktop .nav-item .nav-icon svg { width: 21px; height: 21px; }
+  html.bp-desktop .nav-badge { top: 4px; right: 4px; transform: none; min-width: 15px; height: 15px; font-size: 9px; }
+
+  /* Offset content for sidebar */
+  html.bp-desktop .topbar {
+    margin-left: 68px;
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+  }
+  html.bp-desktop .topbar-title { font-size: 16px; text-align: left; padding-left: 8px; }
+  html.bp-desktop #view-container { margin-left: 68px; overflow-y: auto; }
+  html.bp-desktop .view-root { padding: 0 0 40px; }
+
+  /* Layout widening */
+  html.bp-desktop .hero { height: 280px; border-radius: 0; }
+  html.bp-desktop .hero-title { font-size: 38px; }
+  html.bp-desktop .info-strip { padding: 18px 32px; }
+  html.bp-desktop .section-title { padding: 10px 32px; font-size: 14px; }
+  html.bp-desktop .filter-row { padding: 12px 32px; }
+  html.bp-desktop .day-grid { gap: 14px; padding: 6px 32px 20px; }
+  html.bp-desktop .day-pill { width: 80px; padding: 14px 10px 12px; border-radius: 18px; }
+  html.bp-desktop .day-pill .num { font-size: 22px; }
+  html.bp-desktop .destino-strip { gap: 18px; padding: 6px 32px 24px; }
+  html.bp-desktop .destino-card { width: 180px; height: 120px; border-radius: 18px; }
+  html.bp-desktop .progress-wrap { padding: 6px 32px 20px; }
+  html.bp-desktop .location-tag { margin: 0 32px 12px; font-size: 14px; }
+  html.bp-desktop .day-date-title { padding: 0 32px 8px; font-size: 26px; }
+  html.bp-desktop .day-date-sub { padding: 0 32px 20px; font-size: 15px; }
+  html.bp-desktop .timeline { padding: 6px 32px 16px; }
+  html.bp-desktop .event-card { gap: 16px; margin-bottom: 20px; }
+  html.bp-desktop .event-body { padding: 18px; border-radius: 20px; }
+  html.bp-desktop .event-title { font-size: 16px; }
+  html.bp-desktop .place-card { margin: 0 32px 14px; padding: 18px; border-radius: 18px; }
+  html.bp-desktop .check-card { margin: 0 32px 14px; border-radius: 18px; }
+  html.bp-desktop .checks-banner { margin: 16px 32px; border-radius: 18px; }
+  html.bp-desktop .doc-highlight { margin: 10px 32px 24px; border-radius: 22px; padding: 22px; }
+  html.bp-desktop .doc-item { margin: 0 32px 14px; border-radius: 18px; }
+  html.bp-desktop .plan-group { padding: 8px 32px 4px; }
+  html.bp-desktop .plan-item { border-radius: 18px; padding: 14px; margin-bottom: 14px; }
+  html.bp-desktop #mapa-leaflet { height: 520px; border-radius: 18px; }
+  html.bp-desktop .mapa-embed-wrap { margin: 10px 32px 14px; border-radius: 18px; }
+  html.bp-desktop .mapa-tabs { margin: 12px 32px 8px; }
+
+  /* Modals centered */
+  html.bp-desktop .overlay { align-items: center; }
+  html.bp-desktop #add-overlay .overlay-panel, html.bp-desktop #edit-overlay .overlay-panel {
+    max-width: 520px; max-height: 85vh; border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+
+  html.bp-desktop .login-card { max-width: 380px; border-radius: 24px; }
+  html.bp-desktop .loading { padding: 80px 40px; font-size: 15px; }
+  html.bp-desktop .toast { bottom: 24px; left: calc(68px + 50%); transform: translateX(-50%); }
+
+  /* ========== LARGE DESKTOP ========== */
+  html.bp-desktop-lg .bottom-nav { width: 76px; }
+  html.bp-desktop-lg .topbar { margin-left: 76px; }
+  html.bp-desktop-lg #view-container { margin-left: 76px; }
+  html.bp-desktop-lg .hero-title { font-size: 42px; }
+  html.bp-desktop-lg .day-grid { gap: 16px; }
+  html.bp-desktop-lg .day-pill { width: 88px; }
+  html.bp-desktop-lg .destino-card { width: 200px; height: 130px; }
+  html.bp-desktop-lg .toast { left: calc(76px + 50%); }
+</style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+  </head>
+  <body>
+    <div id="app-frame" data-theme="dark">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-search" title="Buscar" aria-label="Buscar"><i data-lucide="search"></i></button>
+        <div class="topbar-title" id="topbar-title">Europa 2026</div>
+        <div class="topbar-right">
+          <button class="icon-btn" id="btn-add" title="Agregar" aria-label="Agregar" style="display:none"><i data-lucide="plus"></i></button>
+          <button class="icon-btn" id="btn-settings" title="Ajustes" aria-label="Ajustes"><i data-lucide="settings"></i></button>
+        </div>
+      </header>
+
+      <main id="view-container">
+        <div id="view-root" class="view-root">
+          <div class="loading">Cargando viaje…</div>
+        </div>
+      </main>
+
+      <nav class="bottom-nav" id="bottom-nav"></nav>
+
+      <div id="search-overlay" class="overlay hidden">
+        <div class="overlay-panel">
+          <div class="overlay-header">
+            <input type="text" id="search-input" placeholder="Buscar vuelos, hoteles, lugares…" autocomplete="off">
+            <button class="icon-btn" id="btn-close-search"><i data-lucide="x"></i></button>
+          </div>
+          <div id="search-results" class="search-results"></div>
+        </div>
+      </div>
+
+      <div id="settings-overlay" class="overlay hidden">
+        <div class="overlay-panel settings-panel">
+          <div class="overlay-header">
+            <div class="overlay-title">Ajustes</div>
+            <button class="icon-btn" id="btn-close-settings"><i data-lucide="x"></i></button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Tema oscuro</div>
+              <div class="settings-hint">Cambia la apariencia de la app</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-theme">
+              <span class="switch-track"></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Zona horaria</div>
+              <div class="settings-hint">Elige qué zona horaria mostrar en el itinerario</div>
+            </div>
+            <select id="select-timezone" class="settings-select">
+              <option value="original">Horario original</option>
+              <option value="argentina">Horario Argentina</option>
+              <option value="europa">Horario Europa</option>
+            </select>
+          </div>
+          <button class="btn-block" id="btn-logout" style="background:var(--accent);margin-top:8px">Cerrar sesión</button>
+          
+          <!-- Admin Section (only visible for master users) -->
+          <div id="admin-section" class="hidden" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+            <div class="settings-label" style="margin-bottom:8px">Sesiones activas</div>
+            <div id="admin-sessions-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="toast" class="toast hidden"></div>
+
+      <div id="add-overlay" class="overlay hidden">
+        <div class="overlay-panel" style="max-height:90%">
+          <div class="overlay-header">
+            <div class="overlay-title">Agregar</div>
+            <button class="icon-btn" id="btn-close-add"><i data-lucide="x"></i></button>
+          </div>
+          <div class="mapa-tabs" style="margin:0 0 12px">
+            <button class="mapa-tab-btn active" data-add-tab="lugar">Lugar</button>
+            <button class="mapa-tab-btn" data-add-tab="evento">Itinerario</button>
+          </div>
+
+          <!-- Form Lugar -->
+          <form id="form-lugar" class="add-form">
+            <div class="form-group">
+              <label class="form-label">Nombre *</label>
+              <input type="text" class="form-input" name="Nombre" required placeholder="Ej: Puente de Rialto">
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Categoría *</label>
+                <select class="form-input" name="Categoria" required>
+                  <option value="">Seleccionar…</option>
+                  <option value="Comer">Comer</option>
+                  <option value="Atracciones">Atracciones</option>
+                  <option value="Naturaleza">Naturaleza</option>
+                  <option value="Compras">Compras</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Destino *</label>
+                <select class="form-input" name="Destino" required id="lugar-destino-select">
+                  <option value="">Seleccionar…</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Link Google Maps</label>
+              <input type="url" class="form-input" name="MapsURL" placeholder="https://maps.google.com/…">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Notas</label>
+              <textarea class="form-input" name="Notas" rows="2" placeholder="Descripción, horarios, etc."></textarea>
+            </div>
+            <button type="submit" class="btn-block" id="btn-save-lugar">Guardar lugar</button>
+          </form>
+
+          <!-- Form Evento -->
+          <form id="form-evento" class="add-form" style="display:none">
+            <div class="form-group">
+              <label class="form-label">Fecha *</label>
+              <input type="date" class="form-input" name="Fecha" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Hora inicio *</label>
+                <input type="time" class="form-input" name="Hora" required>
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Hora fin</label>
+                <input type="time" class="form-input" name="Hora Fin">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tipo *</label>
+              <select class="form-input" name="Tipo" required>
+                <option value="">Seleccionar…</option>
+                <option value="vuelo">Vuelo</option>
+                <option value="hotel_checkin">Check-in hotel</option>
+                <option value="hotel_checkout">Check-out hotel</option>
+                <option value="excursion">Excursión</option>
+                <option value="traslado">Traslado</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Título *</label>
+              <input type="text" class="form-input" name="Titulo" required placeholder="Ej: Vuelo Buenos Aires → Roma">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Subtítulo</label>
+              <input type="text" class="form-input" name="Subtitulo" placeholder="Ej: Aerolíneas Argentinas AR 2061">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Destino</label>
+              <select class="form-input" name="Destino" id="evento-destino-select">
+                <option value="">Seleccionar…</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Detalle</label>
+              <textarea class="form-input" name="Detalle" rows="2" placeholder="Información adicional…"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Código de confirmación</label>
+              <input type="text" class="form-input" name="CodigoConfirmacion" placeholder="Ej: ABC123">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Link Google Maps</label>
+              <input type="url" class="form-input" name="MapsURL" placeholder="https://maps.google.com/…">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Teléfono</label>
+              <input type="tel" class="form-input" name="Telefono" placeholder="+39 06 123456">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Zona horaria</label>
+              <select class="form-input" name="Zona Horaria">
+                <option value="Europe/Rome">Europe/Rome</option>
+                <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</option>
+                <option value="Europe/London">Europe/London</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Voucher: archivo o link de Drive</label>
+              <div class="form-row">
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                  <input type="file" class="form-input form-file" id="voucher-file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">
+                </div>
+                <div style="font-size:12px;color:var(--text-muted);padding:6px 0;text-align:center">o</div>
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                  <input type="url" class="form-input" name="VoucherURL" placeholder="Link de Drive">
+                </div>
+              </div>
+              <div id="voucher-file-name" style="font-size:12px;color:var(--accent);margin-top:4px;display:none"></div>
+            </div>
+            <button type="submit" class="btn-block" id="btn-save-evento">Guardar evento</button>
+          </form>
+
+          <div id="add-status" style="text-align:center;padding:8px;font-size:13px;color:var(--accent);display:none"></div>
+        </div>
+      </div>
+
+      <div id="edit-overlay" class="overlay hidden">
+        <div class="overlay-panel" style="max-height:90%">
+          <div class="overlay-header">
+            <div class="overlay-title">Editar evento</div>
+            <button class="icon-btn" id="btn-close-edit"><i data-lucide="x"></i></button>
+          </div>
+          <form id="form-edit" class="add-form">
+            <input type="hidden" name="_idx">
+            <div class="form-group">
+              <label class="form-label">Fecha *</label>
+              <input type="date" class="form-input" name="Fecha" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Hora inicio *</label>
+                <input type="time" class="form-input" name="Hora" required>
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Hora fin</label>
+                <input type="time" class="form-input" name="Hora Fin">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tipo *</label>
+              <select class="form-input" name="Tipo" required>
+                <option value="">Seleccionar…</option>
+                <option value="vuelo">Vuelo</option>
+                <option value="hotel_checkin">Check-in hotel</option>
+                <option value="hotel_checkout">Check-out hotel</option>
+                <option value="excursion">Excursión</option>
+                <option value="traslado">Traslado</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Título *</label>
+              <input type="text" class="form-input" name="Titulo" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Subtítulo</label>
+              <input type="text" class="form-input" name="Subtitulo">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Destino</label>
+              <select class="form-input" name="Destino" id="edit-destino-select">
+                <option value="">Seleccionar…</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Detalle</label>
+              <textarea class="form-input" name="Detalle" rows="2"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Código de confirmación</label>
+              <input type="text" class="form-input" name="CodigoConfirmacion">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Link Google Maps</label>
+              <input type="url" class="form-input" name="MapsURL">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Teléfono</label>
+              <input type="tel" class="form-input" name="Telefono">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Zona horaria</label>
+              <select class="form-input" name="Zona Horaria">
+                <option value="Europe/Rome">Europe/Rome</option>
+                <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</option>
+                <option value="Europe/London">Europe/London</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Voucher: archivo o link de Drive</label>
+              <div class="form-row">
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                  <input type="file" class="form-input form-file" id="edit-voucher-file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">
+                </div>
+                <div style="font-size:12px;color:var(--text-muted);padding:6px 0;text-align:center">o</div>
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                  <input type="url" class="form-input" name="VoucherURL" placeholder="Link de Drive">
+                </div>
+              </div>
+              <div id="edit-voucher-file-name" style="font-size:12px;color:var(--accent);margin-top:4px;display:none"></div>
+              <div id="edit-voucher-current" style="font-size:11px;color:var(--text-muted);margin-top:4px;display:none"></div>
+            </div>
+            <button type="submit" class="btn-block" id="btn-save-edit" style="background:var(--accent);color:#fff;margin-top:8px">Guardar cambios</button>
+          </form>
+          <div id="edit-status" style="text-align:center;padding:8px;font-size:13px;color:var(--accent);display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+(function () {
+  'use strict';
+
+  var ICONS = { vuelo: 'plane', vuelo_llegada: 'plane', hotel_checkin: 'building-2', hotel_checkout: 'building-2', excursion: 'mountain', traslado: 'bus', traslado_llegada: 'map-pin' };
+  var TYPE_LABELS = { vuelo: 'Vuelo', vuelo_llegada: 'Vuelo', hotel_checkin: 'Check-in', hotel_checkout: 'Check-out', excursion: 'Excursión', traslado: 'Traslado', traslado_llegada: 'Traslado' };
+  var CATEGORY_ICONS = { Comer: 'utensils', Atracciones: 'landmark', Naturaleza: 'leaf', Compras: 'shopping-bag', Otro: 'map-pin' };
+  var DOC_ICONS = { Seguro: 'shield', Pasaporte: 'stamp', Documento: 'file-text', Contacto: 'phone' };
+  var WEEKDAY_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+  var WEEKDAY_FULL = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  var MONTH_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  var MONTH_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  function icon(name, size, extraStyle) {
+    var s = size || 24;
+    return '<i data-lucide="' + name + '" style="width:' + s + 'px;height:' + s + 'px' + (extraStyle ? ';' + extraStyle : '') + '"></i>';
+  }
+
+  function refreshIcons() { lucide.createIcons(); }
+
+  function getCheckStatus(ev, checkType) {
+    var completados = (App.data && App.data.checksCompletados) || {};
+    var checks = (App.data && App.data.checks) || [];
+    var evDate = (ev.Fecha || '').replace(/-/g, '');
+    var evTime = (ev.Hora || '').replace(':', '');
+    var suffix = ev.Tipo === 'traslado' ? 'traslado' : 'ev';
+    var checkId = 'check_' + checkType + '_' + evDate + '_' + evTime + '_' + suffix;
+    if (completados[checkId] === 'hecho') return 'completed';
+    if (completados[checkId] === 'no_realizado') return 'discarded';
+    for (var i = 0; i < checks.length; i++) {
+      if (checks[i].Id === checkId) return 'pending';
+    }
+    return null;
+  }
+
+  function computeDuration(dateStr, startTime, endTime, dateEndStr, startTz, endTz) {
+    if (!startTime || !endTime) return null;
+    try {
+      var fmtOpts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+      function toUTC(dateStr, timeStr, tz) {
+        if (!tz) return new Date(dateStr + 'T' + timeStr + ':00Z');
+        var d = new Date(dateStr + 'T' + timeStr + ':00Z');
+        var parts = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, fmtOpts)).formatToParts(d);
+        var utcParts = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: 'UTC' }, fmtOpts)).formatToParts(d);
+        function gp(arr, type) { var p = arr.find(function(x) { return x.type === type; }); return p ? parseInt(p.value, 10) : 0; }
+        var tzDate = new Date(gp(parts, 'year'), gp(parts, 'month') - 1, gp(parts, 'day'), gp(parts, 'hour'), gp(parts, 'minute'));
+        var utcDate = new Date(gp(utcParts, 'year'), gp(utcParts, 'month') - 1, gp(utcParts, 'day'), gp(utcParts, 'hour'), gp(utcParts, 'minute'));
+        var offset = utcDate.getTime() - tzDate.getTime();
+        return new Date(d.getTime() + offset);
+      }
+      var startUTC = toUTC(dateStr, startTime, startTz);
+      var endUTC = toUTC(dateEndStr || dateStr, endTime, endTz);
+      var diffMs = endUTC.getTime() - startUTC.getTime();
+      if (diffMs <= 0) return null;
+      var totalMin = Math.round(diffMs / 60000);
+      var hours = Math.floor(totalMin / 60);
+      var mins = totalMin % 60;
+      if (hours > 0 && mins > 0) return hours + 'h ' + mins + 'min';
+      if (hours > 0) return hours + 'h';
+      return mins + 'min';
+    } catch (e) { return null; }
+  }
+
+  var NAV_ITEMS = [
+    { id: 'home', label: 'Inicio', icon: 'home' },
+    { id: 'day', label: 'Día', icon: 'calendar' },
+    { id: 'checks', label: 'Checks', icon: 'clipboard-check' },
+    { id: 'plan', label: 'Plan', icon: 'clipboard-list' },
+    { id: 'mapa', label: 'Mapa', icon: 'map' },
+    { id: 'telefonos', label: 'Teléfonos', icon: 'phone' },
+    { id: 'docs', label: 'Docs', icon: 'folder' }
+  ];
+
+  var App = {
+    data: null,
+    days: [],
+    view: 'home',
+    dayIndex: 0,
+    planFilter: 'Todos',
+    mapaFilter: 'Todos',
+    mapaDestinoFilter: 'Todos',
+    mapaViewTab: 'lista',
+    phoneFilter: 'Todos',
+    userRole: null,
+    loggedIn: false,
+    settings: { tema: 'dark', zonaHoraria: 'original' }
+  };
+
+
+  /* ============================= GitHub ↔ Apps Script bridge ============================= */
+  /*
+   * Adaptador para que el Index original pueda seguir usando google.script.run
+   * aunque ahora esté alojado en GitHub Pages.
+   */
+  var GH_BRIDGE_URL = 'https://script.google.com/macros/s/AKfycby5Xy-Rx1bOXKW7bVXtFYM6wYAJyQBgqx65WANlsZozj-IFXE6V1yBhBsyDTjHWdep-hg/exec?page=bridge';
+  var GH_TOKEN_KEY = 'europa2026_gh_token';
+  var ghBridgeFrame = null;
+  var ghBridgeReady = null;
+  var ghPending = {};
+
+  function initGHBridge() {
+    if (ghBridgeReady) return ghBridgeReady;
+
+    ghBridgeReady = new Promise(function (resolve, reject) {
+      var iframe = document.createElement('iframe');
+      iframe.src = GH_BRIDGE_URL;
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.tabIndex = -1;
+      iframe.style.position = 'fixed';
+      iframe.style.width = '1px';
+      iframe.style.height = '1px';
+      iframe.style.opacity = '0';
+      iframe.style.pointerEvents = 'none';
+      iframe.style.border = '0';
+      iframe.style.left = '-9999px';
+
+      iframe.onload = function () {
+        ghBridgeFrame = iframe;
+        resolve();
+      };
+
+      iframe.onerror = function () {
+        reject(new Error('No se pudo cargar el puente con Apps Script'));
+      };
+
+      document.body.appendChild(iframe);
+    });
+
+    return ghBridgeReady;
+  }
+
+  window.addEventListener('message', function (event) {
+    if (!ghBridgeFrame || event.source !== ghBridgeFrame.contentWindow) return;
+
+    var message = event.data;
+    if (!message || message.source !== 'EUROPA_2026_GAS' || !message.requestId) return;
+
+    var pending = ghPending[message.requestId];
+    if (!pending) return;
+
+    delete ghPending[message.requestId];
+    clearTimeout(pending.timer);
+
+    if (message.ok) pending.resolve(message.result);
+    else pending.reject(new Error(message.error || 'Error de conexión con Apps Script'));
+  });
+
+  function apiGH(action, payload) {
+    payload = payload || {};
+
+    return initGHBridge().then(function () {
+      return new Promise(function (resolve, reject) {
+        var requestId = 'gh_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        var token = localStorage.getItem(GH_TOKEN_KEY) || null;
+
+        var timer = setTimeout(function () {
+          delete ghPending[requestId];
+          reject(new Error('Apps Script tardó demasiado en responder'));
+        }, 30000);
+
+        ghPending[requestId] = { resolve: resolve, reject: reject, timer: timer };
+
+        ghBridgeFrame.contentWindow.postMessage({
+          source: 'EUROPA_2026_GH',
+          requestId: requestId,
+          action: action,
+          payload: payload,
+          token: token
+        }, '*');
+      });
+    }).then(function (result) {
+      if (action === 'login' && result && result.ok && result.token) {
+        localStorage.setItem(GH_TOKEN_KEY, result.token);
+      }
+      if (action === 'logout') {
+        localStorage.removeItem(GH_TOKEN_KEY);
+      }
+      if (result && result.error === 'login_required') {
+        localStorage.removeItem(GH_TOKEN_KEY);
+      }
+      return result;
+    });
+  }
+
+  function ghPayloadForCall(name, args) {
+    switch (name) {
+      case 'login':
+        return { code: args[0] };
+      case 'checkSession':
+      case 'logout':
+      case 'getAppData':
+      case 'getActiveSessions':
+        return {};
+      case 'marcarCheck':
+        return { checkId: args[0], estado: args[1] };
+      case 'saveSettings':
+        return { settings: args[0] };
+      case 'forceLogout':
+        return { code: args[0] };
+      case 'agregarLugar':
+        return { data: args[0] };
+      case 'agregarEvento':
+        return {
+          data: args[0],
+          fileBase64: args[1] || null,
+          fileMimeType: args[2] || null,
+          fileOriginalName: args[3] || null
+        };
+      case 'actualizarEvento':
+        return {
+          eventIndex: args[0],
+          data: args[1],
+          fileBase64: args[2] || null,
+          fileMimeType: args[3] || null,
+          fileOriginalName: args[4] || null
+        };
+      default:
+        return {};
+    }
+  }
+
+  function makeGoogleScriptRunnerGH(successHandler, failureHandler) {
+    var runner = {
+      withSuccessHandler: function (fn) {
+        return makeGoogleScriptRunnerGH(fn, failureHandler);
+      },
+      withFailureHandler: function (fn) {
+        return makeGoogleScriptRunnerGH(successHandler, fn);
+      }
+    };
+
+    [
+      'login',
+      'checkSession',
+      'logout',
+      'getAppData',
+      'marcarCheck',
+      'saveSettings',
+      'getActiveSessions',
+      'forceLogout',
+      'agregarLugar',
+      'agregarEvento',
+      'actualizarEvento'
+    ].forEach(function (name) {
+      runner[name] = function () {
+        var args = Array.prototype.slice.call(arguments);
+        apiGH(name, ghPayloadForCall(name, args))
+          .then(function (result) {
+            if (typeof successHandler === 'function') successHandler(result);
+          })
+          .catch(function (error) {
+            if (typeof failureHandler === 'function') failureHandler(error);
+            else console.error(error);
+          });
+      };
+    });
+
+    return runner;
+  }
+
+  // Compatibilidad con el Index original: sus llamadas google.script.run
+  // se traducen automáticamente a apiCallGH() a través de Bridge.html.
+  window.google = window.google || {};
+  window.google.script = window.google.script || {};
+  Object.defineProperty(window.google.script, 'run', {
+    configurable: true,
+    get: function () {
+      return makeGoogleScriptRunnerGH(null, null);
+    }
+  });
+
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  function init() {
+    bindGlobalUI();
+    bindDaySwipe();
+    refreshIcons();
+    google.script.run.withSuccessHandler(function (result) {
+      if (result.logged) {
+        App.userRole = result.rol;
+        App.loggedIn = true;
+        google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getAppData();
+      } else {
+        showLoginScreen();
+      }
+    }).withFailureHandler(function () {
+      showLoginScreen();
+    }).checkSession();
+  }
+
+  function showLoginScreen() {
+    document.getElementById('view-root').innerHTML = renderLogin();
+    document.getElementById('btn-login').addEventListener('click', handleLogin);
+    document.getElementById('login-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') handleLogin();
+    });
+    applyTheme('dark');
+    refreshIcons();
+  }
+
+  function renderLogin() {
+    return '<div class="login-screen">' +
+      '<div class="login-card">' +
+        '<div class="login-title">Europa 2026</div>' +
+        '<div class="login-hint">Ingresá tu código para acceder</div>' +
+        '<input type="text" id="login-input" placeholder="Código de acceso" autocomplete="off">' +
+        '<button class="btn-block" id="btn-login">Ingresar</button>' +
+        '<div id="login-error" class="login-error"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function handleLogin() {
+    var input = document.getElementById('login-input');
+    var code = input.value.trim();
+    if (!code) return;
+    var errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    google.script.run.withSuccessHandler(function (result) {
+      if (result.ok) {
+        App.userRole = result.rol;
+        App.loggedIn = true;
+        google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getAppData();
+      } else {
+        errEl.textContent = result.error || 'Código inválido';
+        input.value = '';
+        input.focus();
+      }
+    }).withFailureHandler(function () {
+      errEl.textContent = 'Error de conexión';
+    }).login(code);
+  }
+
+  function onDataLoaded(data) {
+    if (data.error === 'login_required') {
+      showLoginScreen();
+      return;
+    }
+    App.data = data;
+    App.userRole = data.userRole || App.userRole;
+    App.settings = data.settings || App.settings;
+    applyTheme(App.settings.tema);
+    document.getElementById('toggle-theme').checked = App.settings.tema === 'dark';
+    document.getElementById('select-timezone').value = App.settings.zonaHoraria || 'original';
+
+    App.days = computeDays(data.config.FechaInicio, data.config.FechaFin);
+    App.dayIndex = defaultDayIndex();
+    document.getElementById('topbar-title').textContent = data.config.NombreViaje || 'Europa 2026';
+
+    // Show add button only for master
+    document.getElementById('btn-add').style.display = App.userRole === 'master' ? '' : 'none';
+
+    renderBottomNav();
+
+    var initialView = 'home';
+    if (App.data.checks && App.data.checks.length > 0) {
+      initialView = 'checks';
+    }
+    setView(initialView);
+    refreshIcons();
+  }
+
+  function onLoadError(err) {
+    document.getElementById('view-root').innerHTML =
+      '<div class="loading">No se pudo cargar el viaje.<br>' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
+  }
+
+  /* ============================= Helpers ============================= */
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function parseISODate(s) {
+    var p = s.split('-');
+    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  }
+
+  function formatISO(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+
+  function computeDays(startStr, endStr) {
+    var start = parseISODate(startStr);
+    var end = parseISODate(endStr);
+    var days = [];
+    var cursor = new Date(start);
+    var idx = 1;
+    while (cursor <= end) {
+      days.push({ index: idx, date: formatISO(cursor), jsDate: new Date(cursor) });
+      cursor.setDate(cursor.getDate() + 1);
+      idx++;
+    }
+    return days;
+  }
+
+  function defaultDayIndex() {
+    var todayIso = formatISO(new Date());
+    for (var i = 0; i < App.days.length; i++) {
+      if (App.days[i].date === todayIso) return i;
+    }
+    if (App.days.length && todayIso < App.days[0].date) return 0;
+    return 0;
+  }
+
+  function getEventsForDate(dateStr) {
+    return (App.data.eventos || [])
+      .map(function (e, globalIdx) { return Object.assign({}, e, { _globalIdx: globalIdx }); })
+      .filter(function (e) { return e.Fecha === dateStr; })
+      .sort(function (a, b) { return (a.Hora || '').localeCompare(b.Hora || ''); });
+  }
+
+  function getDestinoForDate(dateStr) {
+    var destinos = App.data.destinos || [];
+    for (var i = 0; i < destinos.length; i++) {
+      var d = destinos[i];
+      if (!d.FechaInicio) continue;
+      var match = false;
+      if (d.FechaFin) {
+        var ep = d.FechaFin.split('-');
+        var end = new Date(Number(ep[0]), Number(ep[1]) - 1, Number(ep[2]));
+        end.setDate(end.getDate() - 1);
+        var endStr = formatISO(end);
+        match = dateStr >= d.FechaInicio && dateStr <= endStr;
+      } else {
+        match = dateStr >= d.FechaInicio;
+      }
+      if (match) return d;
+    }
+    return destinos[0] || null;
+  }
+
+  function uniqueDestinoNames() {
+    var seen = {}, out = [];
+    (App.data.destinos || []).forEach(function (d) {
+      if (!seen[d.Nombre]) { seen[d.Nombre] = true; out.push(d.Nombre); }
+    });
+    return out;
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function dateShort(dateStr) {
+    var d = parseISODate(dateStr);
+    return d.getDate() + ' ' + MONTH_SHORT[d.getMonth()];
+  }
+
+  function dateFullTitle(dateStr) {
+    var d = parseISODate(dateStr);
+    return WEEKDAY_FULL[d.getDay()] + ', ' + d.getDate() + ' De ' + MONTH_FULL[d.getMonth()];
+  }
+
+  function convertTime(dateStr, timeStr, fromZone, toZone) {
+    if (!fromZone || !toZone || fromZone === toZone || !timeStr) return null;
+    try {
+      var asUTC = new Date(dateStr + 'T' + timeStr + ':00Z');
+      var fmtOpts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+      var fromParts = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: fromZone }, fmtOpts)).formatToParts(asUTC);
+      var utcParts = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: 'UTC' }, fmtOpts)).formatToParts(asUTC);
+      function gp(parts, type) { var p = parts.find(function(x) { return x.type === type; }); return p ? parseInt(p.value, 10) : 0; }
+      var fromDate = new Date(gp(fromParts, 'year'), gp(fromParts, 'month') - 1, gp(fromParts, 'day'), gp(fromParts, 'hour'), gp(fromParts, 'minute'));
+      var utcDate = new Date(gp(utcParts, 'year'), gp(utcParts, 'month') - 1, gp(utcParts, 'day'), gp(utcParts, 'hour'), gp(utcParts, 'minute'));
+      var offset = utcDate.getTime() - fromDate.getTime();
+      var trueUTC = new Date(asUTC.getTime() + offset);
+      return trueUTC.toLocaleTimeString('es-AR', { timeZone: toZone, hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return null; }
+  }
+
+  function getTzAbbr(timezone) {
+    if (!timezone) return '';
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' }).formatToParts(new Date());
+      var tzPart = parts.find(function(p) { return p.type === 'timeZoneName'; });
+      return tzPart ? tzPart.value : '';
+    } catch(e) { return ''; }
+  }
+
+  function getConvertedTime(dateStr, timeStr, fromZone, zonaHoraria) {
+    if (!timeStr) return { display: timeStr || '', tz: '', original: '' };
+    if (zonaHoraria === 'original' || !fromZone) {
+      return { display: timeStr, tz: fromZone ? getTzAbbr(fromZone) : '', original: '' };
+    }
+    var targetZone = zonaHoraria === 'argentina' ? App.data.config.ZonaHorariaOrigen : App.data.config.ZonaHorariaDestino;
+    if (!targetZone) {
+      return { display: timeStr, tz: fromZone ? getTzAbbr(fromZone) : '', original: '' };
+    }
+    if (targetZone === fromZone) {
+      return { display: timeStr, tz: getTzAbbr(targetZone), original: '' };
+    }
+    var converted = convertTime(dateStr, timeStr, fromZone, targetZone);
+    if (!converted) return { display: timeStr, tz: '', original: '' };
+    return { display: converted, tz: getTzAbbr(targetZone), original: timeStr };
+  }
+
+  function expandEventsForDisplay(events) {
+    var expanded = [];
+    events.forEach(function(ev, loopIdx) {
+      var origIdx = ev._globalIdx !== undefined ? ev._globalIdx : loopIdx;
+      if ((ev.Tipo === 'vuelo' || ev.Tipo === 'traslado') && ev['Hora Fin']) {
+        var dep = Object.assign({}, ev, { _flightPart: 'departure', _origIdx: origIdx });
+        var arr = Object.assign({}, ev, { _flightPart: 'arrival', _origIdx: origIdx });
+        expanded.push(dep);
+        expanded.push(arr);
+      } else {
+        expanded.push(Object.assign({}, ev, { _origIdx: origIdx }));
+      }
+    });
+    return expanded;
+  }
+
+  /* ============================= Nav / routing ============================= */
+
+  function renderBottomNav() {
+    var nav = document.getElementById('bottom-nav');
+    var checksCount = (App.data && App.data.checks) ? App.data.checks.length : 0;
+
+    var items = NAV_ITEMS.filter(function (item) {
+      return item.id !== 'checks' || checksCount > 0;
+    });
+    items.sort(function (a, b) {
+      if (a.id === 'checks') return 1;
+      if (b.id === 'checks') return -1;
+      return 0;
+    });
+
+    nav.innerHTML = items.map(function (item) {
+      var badge = '';
+      if (item.id === 'checks' && checksCount > 0) {
+        badge = '<span class="nav-badge">' + checksCount + '</span>';
+      }
+      return '<button class="nav-item" data-nav="' + item.id + '">' +
+        '<span class="nav-icon">' + icon(item.icon) + badge + '</span><span>' + item.label + '</span></button>';
+    }).join('');
+    nav.querySelectorAll('.nav-item').forEach(function (btn) {
+      btn.addEventListener('click', function () { setView(btn.getAttribute('data-nav')); });
+    });
+    refreshIcons();
+  }
+
+  function setView(view) {
+    App.view = view;
+    document.querySelectorAll('.nav-item').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-nav') === view);
+    });
+    var root = document.getElementById('view-root');
+    if (view === 'home') root.innerHTML = renderHome();
+    else if (view === 'day') root.innerHTML = renderDay();
+    else if (view === 'checks') root.innerHTML = renderChecks();
+    else if (view === 'plan') root.innerHTML = renderPlan();
+    else if (view === 'mapa') root.innerHTML = renderMapa();
+    else if (view === 'telefonos') root.innerHTML = renderTelefonos();
+    else if (view === 'docs') root.innerHTML = renderDocs();
+    document.getElementById('view-container').scrollTop = 0;
+    bindViewEvents(view);
+    refreshIcons();
+  }
+
+  /* ============================= Home ============================= */
+
+  function renderHome() {
+    var cfg = App.data.config;
+    var heroDestino = getDestinoForDate(App.days[App.dayIndex].date);
+    var destinosLine = uniqueDestinoNames().join(' → ');
+    var totalDays = App.days.length;
+    var currentDayNum = App.dayIndex + 1;
+    var progressPct = totalDays ? Math.round((currentDayNum / totalDays) * 100) : 0;
+
+    var heroStyle = heroDestino && heroDestino.ImagenURL ? 'background-image:url(\'' + heroDestino.ImagenURL + '\')' : '';
+
+    var dayGrid = App.days.map(function (day) {
+      var events = getEventsForDate(day.date);
+      var badgeIcons = [];
+      events.forEach(function (ev) {
+        var ic = ICONS[ev.Tipo];
+        if (ic && badgeIcons.indexOf(ic) === -1) badgeIcons.push(ic);
+      });
+      var badgeHtml = badgeIcons.map(function (ic) { return icon(ic, 12); }).join('');
+      var d = day.jsDate;
+      var selected = day.index - 1 === App.dayIndex;
+      return '<div class="day-pill' + (selected ? ' selected' : '') + '" data-day="' + (day.index - 1) + '">' +
+        '<div class="dow">' + WEEKDAY_SHORT[d.getDay()] + '</div>' +
+        '<div class="num">' + d.getDate() + '</div>' +
+        '<div class="dtag">D' + day.index + '</div>' +
+        '<div class="badges">' + badgeHtml + '</div>' +
+        '</div>';
+    }).join('');
+
+    var destinoStrip = (App.data.destinos || []).map(function (d) {
+      var style = d.ImagenURL ? 'background-image:url(\'' + d.ImagenURL + '\')' : '';
+      return '<div class="destino-card" style="' + style + '" data-destino="' + escapeHtml(d.Nombre) + '"><span>' + escapeHtml(d.Nombre) + '</span></div>';
+    }).join('');
+
+    return '' +
+      '<div class="hero" style="' + heroStyle + '">' +
+        '<div class="hero-content">' +
+          '<div class="hero-label">Europa 2026</div>' +
+          '<div class="hero-title">' + escapeHtml(cfg.NombreViaje) + '</div>' +
+          '<div class="hero-subtitle">' + icon('map-pin', 14) + ' ' + escapeHtml(heroDestino ? heroDestino.Nombre : destinosLine) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="info-strip">' +
+        '<div><div class="label">Fechas</div><div class="value">' + dateShort(cfg.FechaInicio) + ' – ' + dateShort(cfg.FechaFin) + '</div></div>' +
+        '<div class="chip">' + icon('users', 14) + ' ' + escapeHtml(cfg.Viajeros || '') + '</div>' +
+      '</div>' +
+      '<div class="progress-wrap">' +
+        '<div class="progress-label">Día ' + currentDayNum + ' de ' + totalDays + '</div>' +
+        '<div class="progress-bar"><div class="progress-fill" style="width:' + progressPct + '%"></div></div>' +
+      '</div>' +
+      '<div class="section-title">Calendario del viaje</div>' +
+      '<div class="day-grid">' + dayGrid + '</div>' +
+      '<div class="section-title">Destinos</div>' +
+      '<div class="destino-strip">' + destinoStrip + '</div>';
+  }
+
+  /* ============================= Día ============================= */
+
+  function getFlightTrackingButtons(ev) {
+    var tracking = ev['Seguimiento Vuelo'];
+    if (!tracking) return [];
+    
+    var links = tracking.split(',').map(function(l) { return l.trim(); }).filter(function(l) { return l; });
+    var buttons = [];
+    
+    links.forEach(function(link, i) {
+      var label = links.length > 1 ? 'Seguimiento Vuelo ' + (i + 1) : 'Seguimiento Vuelo';
+      buttons.push('<a class="action-chip" href="' + escapeHtml(link) + '" target="_blank" rel="noopener">' + icon('plane', 14) + ' ' + label + '</a>');
+    });
+    
+    return buttons;
+  }
+
+  function renderEventCard(ev, isLast) {
+    var iconName = ICONS[ev.Tipo] || 'map-pin';
+    var typeLabel = TYPE_LABELS[ev.Tipo] || ev.Tipo || '';
+    var zonaHoraria = App.settings.zonaHoraria || 'original';
+    var isTransport = ev.Tipo === 'traslado';
+    var isFlight = ev.Tipo === 'vuelo';
+
+    if ((isFlight || isTransport) && ev._flightPart === 'departure') {
+      var depInfo = getConvertedTime(ev.Fecha, ev.Hora, ev['Zona Horaria'], zonaHoraria);
+      var depTimeHtml = '<div class="event-time">' + escapeHtml(depInfo.display);
+      if (depInfo.tz) depTimeHtml += '<span class="tz-label">' + escapeHtml(depInfo.tz) + '</span>';
+      if (depInfo.original) depTimeHtml += '<span class="origin-time">(' + escapeHtml(depInfo.original) + ')</span>';
+      depTimeHtml += '</div>';
+
+      var duration = computeDuration(ev.Fecha, ev.Hora, ev['Hora Fin'], ev['Fecha Fin'], ev['Zona Horaria'], ev['Zona Horaria Fin']);
+      var durationLine = duration ? '<div class="event-endtime">' + icon('clock', 12) + ' Duración: ' + duration + '</div>' : '';
+
+      var depCheckBadge = '';
+      var depCheckType = isFlight ? 'vuelo' : 'traslado';
+      var depCheckStatus = getCheckStatus(ev, depCheckType);
+      if (depCheckStatus === 'completed') {
+        var depLabel = isFlight ? '✓ ABORDADO' : '✓ ABORDADO';
+        depCheckBadge = '<div class="check-status-badge completed">' + depLabel + '</div>';
+      } else if (depCheckStatus === 'discarded') {
+        depCheckBadge = '<div class="check-status-badge discarded">✗ NO REALIZADO</div>';
+      } else if (depCheckStatus === 'pending') {
+        depCheckBadge = '<div class="check-status-badge pending">Check pendiente</div>';
+      }
+
+      var depActions = [];
+      if (ev.CodigoConfirmacion) {
+        depActions.push('<button class="action-chip" data-action="copy" data-value="' + escapeHtml(ev.CodigoConfirmacion) + '">' + icon('copy', 14) + ' ' + escapeHtml(ev.CodigoConfirmacion) + '</button>');
+      }
+      if (App.userRole === 'master' && ev.VoucherURL) {
+        depActions.push('<a class="action-chip" href="' + escapeHtml(ev.VoucherURL) + '" target="_blank" rel="noopener">' + icon('ticket', 14) + ' Voucher</a>');
+      }
+      if (ev.MapsURL) {
+        depActions.push('<a class="action-chip" href="' + escapeHtml(ev.MapsURL) + '" target="_blank" rel="noopener">' + icon('map-pin', 14) + ' Mapa</a>');
+      }
+      if (ev.Telefono) {
+        depActions.push('<a class="action-chip" href="tel:' + escapeHtml(ev.Telefono) + '">' + icon('phone', 14) + ' Llamar</a>');
+      }
+      depActions = depActions.concat(getFlightTrackingButtons(ev));
+
+      return '' +
+        '<div class="event-card">' +
+          '<div class="event-time-col"><div class="event-icon">' + icon(iconName, 18) + '</div><div class="event-line"></div></div>' +
+          '<div class="event-body">' +
+            '<div class="event-top-row">' + depTimeHtml + '<div class="event-badges"><div class="event-type-badge">' + escapeHtml(typeLabel) + '</div>' + depCheckBadge + '</div></div>' +
+            '<div class="event-title">' + escapeHtml(ev.Titulo) + '</div>' +
+            (ev.Subtitulo ? '<div class="event-subtitle">' + escapeHtml(ev.Subtitulo) + '</div>' : '') +
+            durationLine +
+            (App.userRole === 'master' && ev.Detalle ? '<div class="event-note">' + escapeHtml(ev.Detalle) + '</div>' : '') +
+            (depActions.length ? '<div class="event-actions">' + depActions.join('') + '</div>' : '') +
+          '</div>' +
+        '</div>';
+    }
+
+    if ((isFlight || isTransport) && ev._flightPart === 'arrival') {
+      var arrInfo = getConvertedTime(ev['Fecha Fin'] || ev.Fecha, ev['Hora Fin'], ev['Zona Horaria Fin'], zonaHoraria);
+      var arrTimeHtml = '<div class="event-time">' + escapeHtml(arrInfo.display);
+      if (arrInfo.tz) arrTimeHtml += '<span class="tz-label">' + escapeHtml(arrInfo.tz) + '</span>';
+      if (arrInfo.original) arrTimeHtml += '<span class="origin-time">(' + escapeHtml(arrInfo.original) + ')</span>';
+      arrTimeHtml += '</div>';
+
+      var arrivalTitle = ev.Destino || '';
+      if (!arrivalTitle && ev.Subtitulo) {
+        var parts = ev.Subtitulo.split('→');
+        arrivalTitle = parts.length > 1 ? parts[parts.length - 1].trim() : ev.Subtitulo;
+      }
+
+      var arrCheckBadge = '';
+      var arrCheckType = isFlight ? 'vuelo_llegada' : 'traslado_llegada';
+      var arrCheckStatus = getCheckStatus(ev, arrCheckType);
+      if (arrCheckStatus === 'completed') {
+        var arrDoneLabel = isFlight ? '✓ ARRIBADO' : '✓ FINALIZADO';
+        arrCheckBadge = '<div class="check-status-badge completed">' + arrDoneLabel + '</div>';
+      } else if (arrCheckStatus === 'discarded') {
+        arrCheckBadge = '<div class="check-status-badge discarded">✗ NO REALIZADO</div>';
+      } else if (arrCheckStatus === 'pending') {
+        arrCheckBadge = '<div class="check-status-badge pending">Check pendiente</div>';
+      }
+
+      var arrActions = [];
+      if (ev.MapsURL) {
+        arrActions.push('<a class="action-chip" href="' + escapeHtml(ev.MapsURL) + '" target="_blank" rel="noopener">' + icon('map-pin', 14) + ' Mapa</a>');
+      }
+      arrActions = arrActions.concat(getFlightTrackingButtons(ev));
+
+      var arrIconName = isFlight ? 'plane' : 'map-pin';
+      var arrIconStyle = isFlight ? 'transform:rotate(90deg)' : '';
+
+      return '' +
+        '<div class="event-card">' +
+          '<div class="event-time-col"><div class="event-icon">' + icon(arrIconName, 18, arrIconStyle) + '</div>' + (isLast ? '' : '<div class="event-line"></div>') + '</div>' +
+          '<div class="event-body">' +
+            '<div class="event-top-row">' + arrTimeHtml + '<div class="event-badges"><div class="event-type-badge">Llegada</div>' + arrCheckBadge + '</div></div>' +
+            '<div class="event-title">' + escapeHtml(arrivalTitle) + '</div>' +
+            (arrActions.length ? '<div class="event-actions">' + arrActions.join('') + '</div>' : '') +
+          '</div>' +
+        '</div>';
+    }
+
+    var timeInfo = getConvertedTime(ev.Fecha, ev.Hora, ev['Zona Horaria'], zonaHoraria);
+    var timeHtml = '<div class="event-time">' + escapeHtml(timeInfo.display);
+    if (timeInfo.tz) timeHtml += '<span class="tz-label">' + escapeHtml(timeInfo.tz) + '</span>';
+    if (timeInfo.original) timeHtml += '<span class="origin-time">(' + escapeHtml(timeInfo.original) + ')</span>';
+    timeHtml += '</div>';
+
+    var genericCheckBadge = '';
+    if (ev.Tipo === 'hotel_checkin') {
+      var genCheckStatus = getCheckStatus(ev, 'hotel_checkin');
+      if (genCheckStatus === 'completed') {
+        genericCheckBadge = '<div class="check-status-badge completed">✓ CHECK-IN REALIZADO</div>';
+      } else if (genCheckStatus === 'discarded') {
+        genericCheckBadge = '<div class="check-status-badge discarded">✗ NO REALIZADO</div>';
+      } else if (genCheckStatus === 'pending') {
+        genericCheckBadge = '<div class="check-status-badge pending">Check pendiente</div>';
+      }
+    } else if (ev.Tipo === 'vuelo' || ev.Tipo === 'traslado') {
+      // Vuelo/traslado sin Hora Fin no se separan en dep/llegada, así que el check de salida se muestra acá.
+      var genCheckType = ev.Tipo === 'vuelo' ? 'vuelo' : 'traslado';
+      var genCheckStatus = getCheckStatus(ev, genCheckType);
+      var genDoneLabel = '✓ ABORDADO';
+      if (genCheckStatus === 'completed') {
+        genericCheckBadge = '<div class="check-status-badge completed">' + genDoneLabel + '</div>';
+      } else if (genCheckStatus === 'discarded') {
+        genericCheckBadge = '<div class="check-status-badge discarded">✗ NO REALIZADO</div>';
+      } else if (genCheckStatus === 'pending') {
+        genericCheckBadge = '<div class="check-status-badge pending">Check pendiente</div>';
+      }
+    }
+
+    var duration = computeDuration(ev.Fecha, ev.Hora, ev['Hora Fin'], ev['Fecha Fin'], ev['Zona Horaria'], ev['Zona Horaria Fin']);
+    var endTimeLine = '';
+    if (ev['Hora Fin']) {
+      var endTimeInfo = getConvertedTime(ev['Fecha Fin'] || ev.Fecha, ev['Hora Fin'], ev['Zona Horaria Fin'], zonaHoraria);
+      endTimeLine = '<div class="event-endtime">' + icon('clock', 12) + ' Hasta las ' + escapeHtml(endTimeInfo.display);
+      if (endTimeInfo.tz) endTimeLine += '<span class="tz-label">' + escapeHtml(endTimeInfo.tz) + '</span>';
+      if (endTimeInfo.original) endTimeLine += ' <span class="origin-time">(' + escapeHtml(endTimeInfo.original) + ')</span>';
+      if (duration) endTimeLine += ' · ' + duration;
+      endTimeLine += '</div>';
+    }
+
+    var actions = [];
+    if (ev.CodigoConfirmacion) {
+      actions.push('<button class="action-chip" data-action="copy" data-value="' + escapeHtml(ev.CodigoConfirmacion) + '">' + icon('copy', 14) + ' ' + escapeHtml(ev.CodigoConfirmacion) + '</button>');
+    }
+    if (App.userRole === 'master' && ev.VoucherURL) {
+      actions.push('<a class="action-chip" href="' + escapeHtml(ev.VoucherURL) + '" target="_blank" rel="noopener">' + icon('ticket', 14) + ' Voucher</a>');
+    }
+    if (ev.MapsURL) {
+      actions.push('<a class="action-chip" href="' + escapeHtml(ev.MapsURL) + '" target="_blank" rel="noopener">' + icon('map-pin', 14) + ' Mapa</a>');
+    }
+    if (ev.Telefono) {
+      actions.push('<a class="action-chip" href="tel:' + escapeHtml(ev.Telefono) + '">' + icon('phone', 14) + ' Llamar</a>');
+    }
+    actions = actions.concat(getFlightTrackingButtons(ev));
+
+    return '' +
+      '<div class="event-card">' +
+        '<div class="event-time-col"><div class="event-icon">' + icon(iconName, 18) + '</div>' + (isLast ? '' : '<div class="event-line"></div>') + '</div>' +
+        '<div class="event-body">' +
+          '<div class="event-top-row">' + timeHtml + '<div class="event-badges"><div class="event-type-badge">' + escapeHtml(typeLabel) + '</div>' + genericCheckBadge + '</div></div>' +
+          '<div class="event-title">' + escapeHtml(ev.Titulo) + '</div>' +
+          (ev.Subtitulo ? '<div class="event-subtitle">' + escapeHtml(ev.Subtitulo) + '</div>' : '') +
+          endTimeLine +
+          (App.userRole === 'master' && ev.Detalle ? '<div class="event-note">' + escapeHtml(ev.Detalle) + '</div>' : '') +
+          (actions.length ? '<div class="event-actions">' + actions.join('') + '</div>' : '') +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderDay() {
+    var day = App.days[App.dayIndex];
+    var events = getEventsForDate(day.date);
+    var destino = getDestinoForDate(day.date);
+    var locationTag = '';
+    if (destino) {
+      var locParts = [];
+      if (destino.Alojamiento) {
+        locParts.push('<a href="' + escapeHtml(destino.Alojamiento) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + icon('map-pin', 14) + ' ' + escapeHtml(destino.Nombre) + '</a>');
+      } else {
+        locParts.push(icon('map-pin', 14) + ' ' + escapeHtml(destino.Nombre));
+      }
+      if (destino['Telefono Alojamiento']) {
+        locParts.push('<a href="tel:' + escapeHtml(destino['Telefono Alojamiento']) + '" style="color:inherit;text-decoration:none;margin-left:8px">' + icon('phone', 13) + '</a>');
+      }
+      locationTag = locParts.join('');
+    }
+
+    var displayEvents = expandEventsForDisplay(events);
+    var timelineHtml = displayEvents.length
+      ? displayEvents.map(function (ev, i) { return renderEventCard(ev, i === displayEvents.length - 1); }).join('')
+      : '<div class="empty-day">No hay eventos cargados para este día.</div>';
+
+    return '' +
+      '<div class="day-header">' +
+        '<button class="nav-arrow" data-day-nav="-1" ' + (App.dayIndex === 0 ? 'disabled' : '') + '>' + icon('chevron-left', 16) + '</button>' +
+        '<div class="day-of-total">Día <b>' + (App.dayIndex + 1) + '</b> de ' + App.days.length + '</div>' +
+        '<button class="nav-arrow" data-day-nav="1" ' + (App.dayIndex === App.days.length - 1 ? 'disabled' : '') + '>' + icon('chevron-right', 16) + '</button>' +
+      '</div>' +
+      '<div class="location-tag">' + locationTag + '</div>' +
+      '<div class="day-date-title">' + dateFullTitle(day.date) + '</div>' +
+      '<div class="timeline">' + timelineHtml + '</div>';
+  }
+
+  function goDay(delta) {
+    var next = App.dayIndex + delta;
+    if (next < 0 || next >= App.days.length) return;
+    App.dayIndex = next;
+    setView('day');
+  }
+
+  /* ============================= Checks ============================= */
+
+  var CHECK_TYPE_CONFIG = {
+    vuelo: { icon: 'plane', label: 'ABORDADO', labelShort: 'Abordaje' },
+    vuelo_llegada: { icon: 'plane', label: 'ARRIBADO', labelShort: 'Aterrizaje', rotate: true },
+    hotel_checkin: { icon: 'building-2', label: 'CHECK-IN REALIZADO', labelShort: 'Hotel' },
+    traslado: { icon: 'bus', label: 'ABORDADO', labelShort: 'Traslado' },
+    traslado_llegada: { icon: 'map-pin', label: 'FINALIZADO', labelShort: 'Llegada' }
+  };
+
+  function renderChecks() {
+    var checks = (App.data && App.data.checks) || [];
+    var zonaHoraria = App.settings.zonaHoraria || 'original';
+
+    if (checks.length === 0) {
+      return '<div class="check-empty">No hay checks pendientes por ahora.<br>Van apareciendo a medida que se acercan los eventos.</div>';
+    }
+
+    var banner = '<div class="checks-banner">' +
+      '<div class="checks-banner-icon">' + icon('clipboard-check', 20) + '</div>' +
+      '<div class="checks-banner-text">' + checks.length + ' check' + (checks.length > 1 ? 's' : '') + ' pendiente' + (checks.length > 1 ? 's' : '') + '</div>' +
+    '</div>';
+
+    var cards = checks.map(function (ck) {
+      var cfg = CHECK_TYPE_CONFIG[ck.Tipo] || { icon: 'check-circle', label: ck.Tipo, labelShort: ck.Tipo };
+      var timeInfo = getConvertedTime(ck.EventoFecha, ck.EventoHora, null, zonaHoraria);
+      var timeHtml = escapeHtml(timeInfo.display);
+      if (timeInfo.tz) timeHtml += ' <span class="tz-label">' + escapeHtml(timeInfo.tz) + '</span>';
+
+      return '<div class="check-card">' +
+        '<div class="check-card-icon">' + icon(cfg.icon, 22, cfg.rotate ? 'transform:rotate(90deg)' : '') + '</div>' +
+        '<div class="check-card-body">' +
+          '<div class="check-card-type">' + escapeHtml(cfg.label) + '</div>' +
+          '<div class="check-card-title">' + escapeHtml(ck.EventoTitulo) + '</div>' +
+          (ck.EventoDestino ? '<div class="check-card-sub">' + escapeHtml(ck.EventoDestino) + '</div>' : '') +
+          '<div class="check-card-time">' + timeHtml + '</div>' +
+        '</div>' +
+        '<div class="check-card-actions">' +
+          '<button class="check-btn" data-check-id="' + escapeHtml(ck.Id) + '" data-estado="hecho">Hecho ✓</button>' +
+          '<button class="check-btn discard" data-check-id="' + escapeHtml(ck.Id) + '" data-estado="no_realizado">No realizado ✗</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return banner + cards;
+  }
+
+  function handleMarcarCheck(checkId, estado) {
+    google.script.run.withSuccessHandler(function (result) {
+      if (result.ok) {
+        showToast(estado === 'no_realizado' ? 'Marcado como no realizado' : 'Check marcado');
+        google.script.run.withSuccessHandler(function (data) {
+          onDataLoaded(data);
+          if ((!data.checks || data.checks.length === 0) && App.view === 'checks') {
+            setView('home');
+          }
+        }).withFailureHandler(onLoadError).getAppData();
+      } else {
+        showToast('Error al marcar check');
+      }
+    }).marcarCheck(checkId, estado);
+  }
+
+  /* ============================= Plan ============================= */
+
+  function renderPlan() {
+    var filters = ['Todos'].concat(uniqueDestinoNames());
+    var chips = filters.map(function (f) {
+      return '<button class="filter-chip' + (App.planFilter === f ? ' active' : '') + '" data-filter="' + escapeHtml(f) + '">' + escapeHtml(f) + '</button>';
+    }).join('');
+
+    var groups = App.days.map(function (day) {
+      var events = getEventsForDate(day.date).filter(function (e) {
+        return App.planFilter === 'Todos' || e.Destino === App.planFilter;
+      });
+      if (!events.length) return '';
+      var items = events.map(function (ev) {
+        var iconName = ICONS[ev.Tipo] || 'map-pin';
+        return '<div class="plan-item" data-goto-day="' + (day.index - 1) + '">' +
+          '<div class="event-icon">' + icon(iconName, 16) + '</div>' +
+          '<div class="plan-info">' +
+            '<div class="plan-title">' + escapeHtml(ev.Titulo) + '</div>' +
+            '<div class="plan-sub">' + escapeHtml(ev.Subtitulo || ev.Destino || '') + '</div>' +
+          '</div>' +
+          '<div class="plan-time">' + escapeHtml(ev.Hora || '') + '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="plan-group"><div class="plan-group-title">D' + day.index + ' · ' + dateFullTitle(day.date) + '</div>' + items + '</div>';
+    }).join('');
+
+    return '<div class="filter-row">' + chips + '</div>' + (groups || '<div class="empty-day">No hay eventos para este filtro.</div>');
+  }
+
+  /* ============================= Mapa ============================= */
+
+  function renderMapa() {
+    var lugares = App.data.lugares || [];
+
+    var destinos = ['Todos'];
+    uniqueDestinoNames().forEach(function (d) { if (destinos.indexOf(d) === -1) destinos.push(d); });
+    lugares.forEach(function (l) { if (l.Destino && destinos.indexOf(l.Destino) === -1) destinos.push(l.Destino); });
+
+    var categories = ['Todos'];
+    lugares.forEach(function (l) { if (l.Categoria && categories.indexOf(l.Categoria) === -1) categories.push(l.Categoria); });
+
+    var destinoChips = destinos.map(function (d) {
+      return '<button class="filter-chip' + (App.mapaDestinoFilter === d ? ' active' : '') + '" data-mapa-destino="' + escapeHtml(d) + '">' + escapeHtml(d) + '</button>';
+    }).join('');
+
+    var categoryChips = categories.map(function (c) {
+      return '<button class="filter-chip' + (App.mapaFilter === c ? ' active' : '') + '" data-mapa-filter="' + escapeHtml(c) + '">' + escapeHtml(c) + '</button>';
+    }).join('');
+
+    var filtered = lugares.filter(function (l) {
+      var matchDestino = App.mapaDestinoFilter === 'Todos' || l.Destino === App.mapaDestinoFilter;
+      var matchCategoria = App.mapaFilter === 'Todos' || l.Categoria === App.mapaFilter;
+      return matchDestino && matchCategoria;
+    });
+
+    var tabBtns =
+      '<div class="mapa-tabs">' +
+        '<button class="mapa-tab-btn' + (App.mapaViewTab === 'lista' ? ' active' : '') + '" data-mapa-tab="lista">' + icon('list', 14) + ' Lista</button>' +
+        '<button class="mapa-tab-btn' + (App.mapaViewTab === 'mapa' ? ' active' : '') + '" data-mapa-tab="mapa">' + icon('map', 14) + ' Mapa</button>' +
+      '</div>';
+
+    var filtersHtml =
+      '<div class="section-title" style="padding-top:10px;padding-bottom:2px">Destino</div>' +
+      '<div class="filter-row" style="padding-top:4px;padding-bottom:8px">' + destinoChips + '</div>' +
+      '<div class="section-title" style="padding-top:4px;padding-bottom:2px">Tipo</div>' +
+      '<div class="filter-row" style="padding-top:4px;padding-bottom:12px">' + categoryChips + '</div>';
+
+    if (App.mapaViewTab === 'lista') {
+      var cards = filtered.map(function (l) {
+        var iconName = CATEGORY_ICONS[l.Categoria] || 'map-pin';
+        return '<div class="place-card">' +
+          '<div class="place-icon">' + icon(iconName, 17) + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div class="place-name">' + escapeHtml(l.Nombre) + '</div>' +
+            '<div class="place-meta">' + escapeHtml(l.Categoria) + (l.Destino ? ' · ' + escapeHtml(l.Destino) : '') + '</div>' +
+            (l.Notas ? '<div class="place-notes">' + escapeHtml(l.Notas) + '</div>' : '') +
+            (l.MapsURL ? '<a class="action-chip" href="' + escapeHtml(l.MapsURL) + '" target="_blank" rel="noopener">' + icon('map-pin', 14) + ' Abrir en Maps</a>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      return tabBtns + filtersHtml + (cards || '<div class="empty-day">No hay lugares guardados para estos filtros.</div>');
+    }
+
+    // Mapa Leaflet view
+    return tabBtns + filtersHtml +
+      '<div id="mapa-leaflet"></div>' +
+      '<div style="padding:0 20px 4px;font-size:12px;color:var(--text-muted);text-align:center" id="mapa-status"></div>';
+  }
+
+  function extractCoordsFromUrl(url) {
+    if (!url) return null;
+    // Pattern: /@lat,lng,zoom
+    var atMatch = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (atMatch) return { lat: parseFloat(atMatch[1]), lng: parseFloat(atMatch[2]) };
+    // Pattern: ?q=lat,lng or &q=lat,lng
+    var qCoordMatch = url.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (qCoordMatch) return { lat: parseFloat(qCoordMatch[1]), lng: parseFloat(qCoordMatch[2]) };
+    // Pattern: /place/.../@lat,lng
+    var placeMatch = url.match(/\/place\/[^/@]*\/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (placeMatch) return { lat: parseFloat(placeMatch[1]), lng: parseFloat(placeMatch[2]) };
+    // Pattern: !3d lat !4d lng (Google Maps data format)
+    var dataMatch = url.match(/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/);
+    if (dataMatch) return { lat: parseFloat(dataMatch[1]), lng: parseFloat(dataMatch[2]) };
+    // Pattern: /maps?...ll=lat,lng
+    var llMatch = url.match(/[?&]ll=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (llMatch) return { lat: parseFloat(llMatch[1]), lng: parseFloat(llMatch[2]) };
+    // Pattern: /maps?...center=lat,lng
+    var centerMatch = url.match(/[?&]center=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (centerMatch) return { lat: parseFloat(centerMatch[1]), lng: parseFloat(centerMatch[2]) };
+    return null;
+  }
+
+  function initMapaLeaflet(lugares) {
+    if (typeof L === 'undefined') {
+      document.getElementById('mapa-status').textContent = 'Error: no se pudo cargar el mapa.';
+      return;
+    }
+    if (!lugares || !lugares.length) {
+      document.getElementById('mapa-status').textContent = 'No hay lugares para mostrar en el mapa.';
+      return;
+    }
+
+    var map = L.map('mapa-leaflet', { zoomControl: true }).setView([45.44, 12.32], 5);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19
+    }).addTo(map);
+
+    var markers = [];
+    var pending = 0;
+
+    function tryFitBounds() {
+      if (markers.length > 0 && pending === 0) {
+        var group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.15));
+      }
+    }
+
+    lugares.forEach(function (l) {
+      var coords = extractCoordsFromUrl(l.MapsURL);
+      if (coords) {
+        addMarker(map, l, coords.lat, coords.lng, markers, tryFitBounds);
+        return;
+      }
+      // Geocode with Nominatim (free, no key)
+      pending++;
+      var query = l.Nombre || '';
+      if (l.Destino) query += ', ' + l.Destino;
+      fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query))
+        .then(function (r) { return r.json(); })
+        .then(function (results) {
+          if (results && results.length > 0) {
+            addMarker(map, l, parseFloat(results[0].lat), parseFloat(results[0].lon), markers, tryFitBounds);
+          }
+        })
+        .catch(function () {})
+        .then(function () {
+          pending--;
+          tryFitBounds();
+          if (pending === 0 && markers.length === 0) {
+            document.getElementById('mapa-status').textContent = 'No se pudieron ubicar los lugares en el mapa.';
+          }
+        });
+    });
+
+    // Fix map rendering when container size changes
+    setTimeout(function () { map.invalidateSize(); }, 100);
+  }
+
+  function addMarker(map, lugar, lat, lng, markersArr, onAdd) {
+    var iconName = CATEGORY_ICONS[lugar.Categoria] || 'map-pin';
+    var color = '#e2664a';
+    var catColor = lugar.Categoria === 'Comer' ? '#f59e0b' :
+                   lugar.Categoria === 'Atracciones' ? '#3b82f6' :
+                   lugar.Categoria === 'Naturaleza' ? '#22c55e' :
+                   lugar.Categoria === 'Compras' ? '#a855f7' : color;
+
+    var markerIcon = L.divIcon({
+      className: '',
+      html: '<div style="background:' + catColor + ';width:28px;height:28px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+
+    var popupHtml = '<div style="min-width:140px">' +
+      '<div style="font-weight:700;font-size:13px;margin-bottom:2px">' + escapeHtml(lugar.Nombre) + '</div>' +
+      '<div style="font-size:11px;color:#666;margin-bottom:4px">' + escapeHtml(lugar.Categoria) + (lugar.Destino ? ' · ' + escapeHtml(lugar.Destino) : '') + '</div>' +
+      (lugar.Notas ? '<div style="font-size:11px;color:#888;margin-bottom:6px">' + escapeHtml(lugar.Notas) + '</div>' : '') +
+      (lugar.MapsURL ? '<a href="' + escapeHtml(lugar.MapsURL) + '" target="_blank" rel="noopener" style="font-size:11px;color:#e2664a;font-weight:700;text-decoration:none">Abrir en Google Maps →</a>' : '') +
+    '</div>';
+
+    var marker = L.marker([lat, lng], { icon: markerIcon }).addTo(map).bindPopup(popupHtml);
+    markersArr.push(marker);
+    if (onAdd) onAdd();
+  }
+
+  /* ============================= Docs ============================= */
+
+  function renderTelefonos() {
+    var telefonos = App.data.telefonos || [];
+    var types = ['Todos'];
+    telefonos.forEach(function (t) { if (t.Tipo && types.indexOf(t.Tipo) === -1) types.push(t.Tipo); });
+
+    var chips = types.map(function (t) {
+      return '<button class="filter-chip' + (App.phoneFilter === t ? ' active' : '') + '" data-phone-filter="' + escapeHtml(t) + '">' + escapeHtml(t) + '</button>';
+    }).join('');
+
+    var filtered = telefonos.filter(function (t) {
+      return App.phoneFilter === 'Todos' || t.Tipo === App.phoneFilter;
+    });
+
+    var items = filtered.map(function (t) {
+      var actions = [];
+      if (t.Telefono) {
+        actions.push('<a class="action-chip" href="tel:' + escapeHtml(t.Telefono) + '">' + icon('phone', 14) + ' ' + escapeHtml(t.Telefono) + '</a>');
+      }
+      return '<div class="doc-item">' +
+        '<div class="doc-icon">' + icon('phone', 20) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="doc-title2">' + escapeHtml(t.Titulo) + '</div>' +
+          (t.Tipo ? '<div class="doc-detail2">' + escapeHtml(t.Tipo) + '</div>' : '') +
+          (actions.length ? '<div class="event-actions">' + actions.join('') + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="filter-row">' + chips + '</div>' +
+      (items || '<div class="empty-day">No hay teléfonos cargados.</div>');
+  }
+
+  function renderDocs() {
+    var docs = App.data.documentos || [];
+    var highlighted = docs.filter(function (d) { return d.Destacado === true || d.Destacado === 'TRUE' || d.Tipo === 'Seguro'; });
+    var rest = docs.filter(function (d) { return highlighted.indexOf(d) === -1; });
+
+    var highlightHtml = highlighted.map(function (d) {
+      var actions = [];
+      if (d.Link) actions.push('<a class="action-chip" href="' + escapeHtml(d.Link) + '" target="_blank" rel="noopener">' + icon('file-text', 14) + ' Ver documento</a>');
+      if (d.Telefono) actions.push('<a class="action-chip" href="tel:' + escapeHtml(d.Telefono) + '">' + icon('phone', 14) + ' ' + escapeHtml(d.Telefono) + '</a>');
+      return '<div class="doc-highlight">' +
+        '<div class="doc-tag">' + (DOC_ICONS[d.Tipo] ? icon(DOC_ICONS[d.Tipo], 14) : icon('shield', 14)) + ' ' + escapeHtml(d.Tipo) + '</div>' +
+        '<div class="doc-title">' + escapeHtml(d.Titulo) + '</div>' +
+        (d.Detalle ? '<div class="doc-detail">' + escapeHtml(d.Detalle) + '</div>' : '') +
+        (actions.length ? '<div class="event-actions">' + actions.join('') + '</div>' : '') +
+      '</div>';
+    }).join('');
+
+    var groupsOrder = ['Pasaporte', 'Documento', 'Contacto'];
+    var groupsHtml = groupsOrder.map(function (tipo) {
+      var items = rest.filter(function (d) { return d.Tipo === tipo; });
+      if (!items.length) return '';
+      var rows = items.map(function (d) {
+        var actions = [];
+        if (d.Link) actions.push('<a class="action-chip" href="' + escapeHtml(d.Link) + '" target="_blank" rel="noopener">' + icon('file-text', 14) + ' Ver</a>');
+        if (d.Telefono) actions.push('<a class="action-chip" href="tel:' + escapeHtml(d.Telefono) + '">' + icon('phone', 14) + ' Llamar</a>');
+        return '<div class="doc-item">' +
+          '<div class="doc-icon">' + (DOC_ICONS[tipo] ? icon(DOC_ICONS[tipo], 20) : icon('file-text', 20)) + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div class="doc-title2">' + escapeHtml(d.Titulo) + '</div>' +
+            (d.Detalle ? '<div class="doc-detail2">' + escapeHtml(d.Detalle) + '</div>' : '') +
+            (actions.length ? '<div class="event-actions">' + actions.join('') + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="section-title">' + tipo + 's</div>' + rows;
+    }).join('');
+
+    return highlightHtml + groupsHtml;
+  }
+
+  /* ============================= View-scoped events ============================= */
+
+  function bindViewEvents(view) {
+    var root = document.getElementById('view-root');
+
+    if (view === 'home') {
+      var selectedPill = root.querySelector('.day-pill.selected');
+      if (selectedPill) {
+        setTimeout(function () { selectedPill.scrollIntoView({ inline: 'center', block: 'nearest' }); }, 0);
+      }
+      var carouselSwipe = { active: false };
+      root.querySelectorAll('.day-grid, .destino-strip').forEach(function (el) {
+        var sx = 0, sy = 0, swiping = false;
+        el.addEventListener('touchstart', function (e) {
+          if (!e.touches || !e.touches.length) return;
+          sx = e.touches[0].clientX; sy = e.touches[0].clientY; swiping = true; carouselSwipe.active = false;
+        }, { passive: true });
+        el.addEventListener('touchmove', function (e) {
+          if (!swiping || !e.touches || !e.touches.length) return;
+          var dx = Math.abs(e.touches[0].clientX - sx);
+          var dy = Math.abs(e.touches[0].clientY - sy);
+          if (dx > 15 && dx > dy * 1.5) { carouselSwipe.active = true; }
+        }, { passive: true });
+        el.addEventListener('touchend', function () { swiping = false; }, { passive: true });
+      });
+      root.querySelectorAll('[data-day]').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+          if (carouselSwipe.active) { carouselSwipe.active = false; e.preventDefault(); e.stopPropagation(); return; }
+          App.dayIndex = Number(el.getAttribute('data-day'));
+          setView('day');
+        });
+      });
+      root.querySelectorAll('[data-destino]').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+          if (carouselSwipe.active) { carouselSwipe.active = false; e.preventDefault(); e.stopPropagation(); return; }
+          App.planFilter = el.getAttribute('data-destino');
+          setView('plan');
+        });
+      });
+    }
+
+    if (view === 'day') {
+      root.querySelectorAll('[data-day-nav]').forEach(function (el) {
+        el.addEventListener('click', function () { goDay(Number(el.getAttribute('data-day-nav'))); });
+      });
+      root.querySelectorAll('[data-action="copy"]').forEach(function (el) {
+        el.addEventListener('click', function () { copyToClipboard(el.getAttribute('data-value')); });
+      });
+      // Edit event on long-press (master only)
+      if (App.userRole === 'master') {
+        var day = App.days[App.dayIndex];
+        var dayEvents = getEventsForDate(day.date);
+        var expanded = expandEventsForDisplay(dayEvents);
+        root.querySelectorAll('.event-card').forEach(function (card, i) {
+          if (i < expanded.length) {
+            card.classList.add('editable');
+            var longTimer = null;
+            var longFired = false;
+            card.addEventListener('touchstart', function (e) {
+              if (e.target.closest('a') || e.target.closest('button')) return;
+              longFired = false;
+              longTimer = setTimeout(function () {
+                longFired = true;
+                var ev = expanded[i];
+                ev._editIdx = ev._origIdx;
+                openEditOverlay(ev);
+              }, 500);
+            }, { passive: true });
+            card.addEventListener('touchend', function (e) {
+              clearTimeout(longTimer);
+              if (longFired) { e.preventDefault(); e.stopPropagation(); }
+            });
+            card.addEventListener('touchmove', function () { clearTimeout(longTimer); }, { passive: true });
+          }
+        });
+      }
+    }
+
+    if (view === 'checks') {
+      root.querySelectorAll('[data-check-id]').forEach(function (el) {
+        el.addEventListener('click', function () { handleMarcarCheck(el.getAttribute('data-check-id'), el.getAttribute('data-estado') || 'hecho'); });
+      });
+    }
+
+    if (view === 'plan') {
+      root.querySelectorAll('[data-filter]').forEach(function (el) {
+        el.addEventListener('click', function () { App.planFilter = el.getAttribute('data-filter'); setView('plan'); });
+      });
+      root.querySelectorAll('[data-goto-day]').forEach(function (el) {
+        el.addEventListener('click', function () { App.dayIndex = Number(el.getAttribute('data-goto-day')); setView('day'); });
+      });
+    }
+
+    if (view === 'mapa') {
+      root.querySelectorAll('[data-mapa-destino]').forEach(function (el) {
+        el.addEventListener('click', function () { App.mapaDestinoFilter = el.getAttribute('data-mapa-destino'); setView('mapa'); });
+      });
+      root.querySelectorAll('[data-mapa-filter]').forEach(function (el) {
+        el.addEventListener('click', function () { App.mapaFilter = el.getAttribute('data-mapa-filter'); setView('mapa'); });
+      });
+      root.querySelectorAll('[data-mapa-tab]').forEach(function (el) {
+        el.addEventListener('click', function () { App.mapaViewTab = el.getAttribute('data-mapa-tab'); setView('mapa'); });
+      });
+      if (App.mapaViewTab === 'mapa') {
+        var lugares = (App.data.lugares || []).filter(function (l) {
+          var matchDestino = App.mapaDestinoFilter === 'Todos' || l.Destino === App.mapaDestinoFilter;
+          var matchCategoria = App.mapaFilter === 'Todos' || l.Categoria === App.mapaFilter;
+          return matchDestino && matchCategoria;
+        });
+        setTimeout(function () { initMapaLeaflet(lugares); }, 50);
+      }
+    }
+
+    if (view === 'telefonos') {
+      root.querySelectorAll('[data-phone-filter]').forEach(function (el) {
+        el.addEventListener('click', function () { App.phoneFilter = el.getAttribute('data-phone-filter'); setView('telefonos'); });
+      });
+    }
+  }
+
+  function bindDaySwipe() {
+    var startX = 0, startY = 0, tracking = false;
+    var vr = document.getElementById('view-root');
+    vr.addEventListener('touchstart', function (e) {
+      if (App.view !== 'day' || !e.touches || !e.touches.length) return;
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY; tracking = true;
+    }, { passive: true });
+    vr.addEventListener('touchmove', function (e) {
+      if (!tracking || App.view !== 'day' || !e.touches || !e.touches.length) return;
+      var dx = Math.abs(e.touches[0].clientX - startX);
+      var dy = Math.abs(e.touches[0].clientY - startY);
+      if (dy > 10 && dy > dx) tracking = false;
+    }, { passive: true });
+    vr.addEventListener('touchend', function (e) {
+      if (!tracking || App.view !== 'day') return;
+      tracking = false;
+      var t = (e.changedTouches && e.changedTouches[0]) || null;
+      if (!t) return;
+      var dx = t.clientX - startX, dy = t.clientY - startY;
+      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
+        goDay(dx > 0 ? -1 : 1);
+      }
+    }, { passive: true });
+  }
+
+  /* ============================= Global UI (search / settings / theme) ============================= */
+
+  function bindGlobalUI() {
+    document.getElementById('btn-search').addEventListener('click', openSearch);
+    document.getElementById('btn-close-search').addEventListener('click', closeSearch);
+    document.getElementById('search-input').addEventListener('input', function (e) { runSearch(e.target.value); });
+
+    document.getElementById('btn-settings').addEventListener('click', openSettings);
+    document.getElementById('btn-close-settings').addEventListener('click', closeSettings);
+    document.getElementById('btn-add').addEventListener('click', openAddOverlay);
+    document.getElementById('btn-close-add').addEventListener('click', closeAddOverlay);
+    document.getElementById('btn-close-edit').addEventListener('click', closeEditOverlay);
+
+    // Add overlay tabs
+    document.querySelectorAll('#add-overlay [data-add-tab]').forEach(function (btn) {
+      btn.addEventListener('click', function () { switchAddTab(btn.getAttribute('data-add-tab')); });
+    });
+
+    // Add overlay forms
+    document.getElementById('form-lugar').addEventListener('submit', handleAddLugar);
+    document.getElementById('form-evento').addEventListener('submit', handleAddEvento);
+    document.getElementById('form-edit').addEventListener('submit', handleEditEvento);
+
+    // Voucher file name display (add)
+    document.getElementById('voucher-file').addEventListener('change', function (e) {
+      var nameEl = document.getElementById('voucher-file-name');
+      if (e.target.files && e.target.files.length > 0) {
+        nameEl.textContent = e.target.files[0].name;
+        nameEl.style.display = 'block';
+      } else {
+        nameEl.style.display = 'none';
+      }
+    });
+    // Voucher file name display (edit)
+    document.getElementById('edit-voucher-file').addEventListener('change', function (e) {
+      var nameEl = document.getElementById('edit-voucher-file-name');
+      if (e.target.files && e.target.files.length > 0) {
+        nameEl.textContent = e.target.files[0].name;
+        nameEl.style.display = 'block';
+      } else {
+        nameEl.style.display = 'none';
+      }
+    });
+    document.getElementById('toggle-theme').addEventListener('change', function (e) {
+      App.settings.tema = e.target.checked ? 'dark' : 'light';
+      applyTheme(App.settings.tema);
+      persistSettings();
+    });
+    document.getElementById('select-timezone').addEventListener('change', function (e) {
+      App.settings.zonaHoraria = e.target.value;
+      persistSettings();
+      if (App.view === 'day') setView('day');
+    });
+    document.getElementById('btn-logout').addEventListener('click', function () {
+      google.script.run.withSuccessHandler(function () {
+        App.loggedIn = false;
+        App.userRole = null;
+        App.data = null;
+        closeSettings();
+        showLoginScreen();
+      }).logout();
+    });
+  }
+
+  /* ============================= Admin functions ============================= */
+
+  function renderAdminSessions() {
+    if (App.userRole !== 'master') return;
+    
+    google.script.run.withSuccessHandler(function(result) {
+      if (result.error) {
+        document.getElementById('admin-sessions-list').innerHTML = '<div class="empty-day">Error al cargar sesiones</div>';
+        return;
+      }
+      
+      var sessions = result.sessions || {};
+      var container = document.getElementById('admin-sessions-list');
+      var codes = Object.keys(sessions);
+      
+      if (codes.length === 0) {
+        container.innerHTML = '<div class="empty-day">No hay sesiones activas</div>';
+        return;
+      }
+      
+      var html = '';
+      codes.forEach(function(code) {
+        var session = sessions[code];
+        var timeAgo = getTimeAgo(session.timestamp);
+        var isCurrentUser = App.data && App.data.userCode === code;
+        
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">';
+        html += '<div>';
+        html += '<div style="font-weight:500">' + escapeHtml(session.nombre || code) + '</div>';
+        html += '<div style="font-size:12px;color:var(--text-muted)">' + session.rol + ' · ' + timeAgo + '</div>';
+        html += '</div>';
+        
+        if (!isCurrentUser) {
+          html += '<button class="icon-btn" onclick="forceLogoutUser(\'' + code + '\')" title="Cerrar sesión">';
+          html += '<i data-lucide="log-out"></i>';
+          html += '</button>';
+        } else {
+          html += '<span style="font-size:12px;color:var(--text-muted)">Tú</span>';
+        }
+        
+        html += '</div>';
+      });
+      
+      container.innerHTML = html;
+      refreshIcons();
+    }).getActiveSessions();
+  }
+
+  function getTimeAgo(timestamp) {
+    if (!timestamp) return 'Desconocido';
+    
+    var now = new Date().getTime();
+    var diff = now - timestamp;
+    var minutes = Math.floor(diff / 60000);
+    var hours = Math.floor(diff / 3600000);
+    var days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return 'Ahora mismo';
+    if (minutes < 60) return 'Hace ' + minutes + ' min';
+    if (hours < 24) return 'Hace ' + hours + ' h';
+    return 'Hace ' + days + ' días';
+  }
+
+  function forceLogoutUser(code) {
+    if (!confirm('¿Cerrar la sesión de este usuario?')) return;
+    
+    google.script.run.withSuccessHandler(function(result) {
+      if (result.ok) {
+        renderAdminSessions();
+        showToast('Sesión cerrada');
+      } else {
+        showToast('Error al cerrar sesión');
+      }
+    }).forceLogout(code);
+  }
+
+  function applyTheme(tema) {
+    var isDark = tema === 'dark';
+    document.getElementById('app-frame').setAttribute('data-theme', isDark ? 'dark' : 'light');
+    if (document.documentElement && document.documentElement.style) {
+      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    }
+  }
+
+  function persistSettings() {
+    google.script.run.saveSettings(App.settings);
+  }
+
+  function openSearch() {
+    document.getElementById('search-overlay').classList.remove('hidden');
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-results').innerHTML = '<div class="search-empty">Escribí para buscar en tu viaje.</div>';
+    document.getElementById('search-input').focus();
+    refreshIcons();
+  }
+  function closeSearch() { document.getElementById('search-overlay').classList.add('hidden'); }
+
+  function runSearch(query) {
+    var box = document.getElementById('search-results');
+    var q = (query || '').trim().toLowerCase();
+    if (!q) { box.innerHTML = '<div class="search-empty">Escribí para buscar en tu viaje.</div>'; return; }
+
+    var results = (App.data.eventos || []).filter(function (ev) {
+      return [ev.Titulo, ev.Subtitulo, ev.Destino, ev.Detalle].join(' ').toLowerCase().indexOf(q) !== -1;
+    });
+
+    if (!results.length) { box.innerHTML = '<div class="search-empty">Sin resultados para "' + escapeHtml(query) + '".</div>'; return; }
+
+    box.innerHTML = results.map(function (ev) {
+      var iconName = ICONS[ev.Tipo] || 'map-pin';
+      return '<div class="search-result-item" data-fecha="' + escapeHtml(ev.Fecha) + '">' +
+        '<div class="event-icon" style="width:32px;height:32px">' + icon(iconName, 14) + '</div>' +
+        '<div><div class="sr-title">' + escapeHtml(ev.Titulo) + '</div>' +
+        '<div class="sr-sub">' + escapeHtml(ev.Fecha) + ' · ' + escapeHtml(ev.Hora || '') + ' · ' + escapeHtml(ev.Destino || '') + '</div></div>' +
+      '</div>';
+    }).join('');
+
+    box.querySelectorAll('[data-fecha]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var fecha = el.getAttribute('data-fecha');
+        var idx = App.days.findIndex(function (d) { return d.date === fecha; });
+        if (idx !== -1) { App.dayIndex = idx; closeSearch(); setView('day'); }
+      });
+    });
+    refreshIcons();
+  }
+
+  function openSettings() { 
+    document.getElementById('settings-overlay').classList.remove('hidden');
+    
+    // Show admin section for master users
+    var adminSection = document.getElementById('admin-section');
+    if (App.userRole === 'master') {
+      adminSection.classList.remove('hidden');
+      renderAdminSessions();
+    } else {
+      adminSection.classList.add('hidden');
+    }
+  }
+  function closeSettings() { document.getElementById('settings-overlay').classList.add('hidden'); }
+
+  /* ============================= Add overlay ============================= */
+
+  function openAddOverlay() {
+    document.getElementById('add-overlay').classList.remove('hidden');
+    document.getElementById('add-status').style.display = 'none';
+    populateDestinoSelects();
+    // Reset to lugar tab
+    switchAddTab('lugar');
+    refreshIcons();
+  }
+  function closeAddOverlay() { document.getElementById('add-overlay').classList.add('hidden'); }
+
+  function switchAddTab(tab) {
+    var btns = document.querySelectorAll('#add-overlay [data-add-tab]');
+    btns.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-add-tab') === tab); });
+    document.getElementById('form-lugar').style.display = tab === 'lugar' ? 'flex' : 'none';
+    document.getElementById('form-evento').style.display = tab === 'evento' ? 'flex' : 'none';
+    document.getElementById('add-status').style.display = 'none';
+  }
+
+  function populateDestinoSelects() {
+    var destinos = uniqueDestinoNames();
+    var opts = '<option value="">Seleccionar…</option>' + destinos.map(function (d) {
+      return '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>';
+    }).join('');
+    var selLugar = document.getElementById('lugar-destino-select');
+    var selEvento = document.getElementById('evento-destino-select');
+    var selEdit = document.getElementById('edit-destino-select');
+    if (selLugar) selLugar.innerHTML = opts;
+    if (selEvento) selEvento.innerHTML = opts;
+    if (selEdit) selEdit.innerHTML = opts;
+  }
+
+  function showAddStatus(msg, isError) {
+    var el = document.getElementById('add-status');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.color = isError ? '#dc2626' : 'var(--accent)';
+  }
+
+  function handleAddLugar(e) {
+    e.preventDefault();
+    var form = document.getElementById('form-lugar');
+    var data = {
+      Nombre: form.Nombre.value.trim(),
+      Categoria: form.Categoria.value,
+      Destino: form.Destino.value,
+      MapsURL: form.MapsURL.value.trim(),
+      Notas: form.Notas.value.trim()
+    };
+    if (!data.Nombre || !data.Categoria) {
+      showAddStatus('Completá nombre y categoría', true);
+      return;
+    }
+    var btn = document.getElementById('btn-save-lugar');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    google.script.run.withSuccessHandler(function (result) {
+      btn.disabled = false; btn.textContent = 'Guardar lugar';
+      if (result.ok) {
+        showAddStatus('Lugar guardado ✓');
+        form.reset();
+        google.script.run.withSuccessHandler(function (d) { onDataLoaded(d); }).getAppData();
+      } else {
+        showAddStatus(result.error || 'Error al guardar', true);
+      }
+    }).withFailureHandler(function (err) {
+      btn.disabled = false; btn.textContent = 'Guardar lugar';
+      showAddStatus('Error: ' + (err.message || err), true);
+    }).agregarLugar(data);
+  }
+
+  function handleAddEvento(e) {
+    e.preventDefault();
+    var form = document.getElementById('form-evento');
+    var fileInput = document.getElementById('voucher-file');
+    var data = {
+      Fecha: form.Fecha.value,
+      Hora: form.Hora.value,
+      'Hora Fin': form['Hora Fin'].value,
+      Tipo: form.Tipo.value,
+      Titulo: form.Titulo.value.trim(),
+      Subtitulo: form.Subtitulo.value.trim(),
+      Destino: form.Destino.value,
+      Detalle: form.Detalle.value.trim(),
+      CodigoConfirmacion: form.CodigoConfirmacion.value.trim(),
+      MapsURL: form.MapsURL.value.trim(),
+      Telefono: form.Telefono.value.trim(),
+      'Zona Horaria': form['Zona Horaria'].value.trim(),
+      VoucherURL: form.VoucherURL.value.trim()
+    };
+    if (!data.Fecha || !data.Hora || !data.Tipo || !data.Titulo) {
+      showAddStatus('Completá fecha, hora, tipo y título', true);
+      return;
+    }
+    var btn = document.getElementById('btn-save-evento');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+
+    function doSave(fileBase64, fileMime, fileName) {
+      google.script.run.withSuccessHandler(function (result) {
+        btn.disabled = false; btn.textContent = 'Guardar evento';
+        if (result.ok) {
+          showAddStatus('Evento guardado ✓');
+          form.reset();
+          document.getElementById('voucher-file-name').style.display = 'none';
+          if (fileInput) fileInput.value = '';
+          google.script.run.withSuccessHandler(function (d) { onDataLoaded(d); }).getAppData();
+        } else {
+          showAddStatus(result.error || 'Error al guardar', true);
+        }
+      }).withFailureHandler(function (err) {
+        btn.disabled = false; btn.textContent = 'Guardar evento';
+        showAddStatus('Error: ' + (err.message || err), true);
+      }).agregarEvento(data, fileBase64 || null, fileMime || null, fileName || null);
+    }
+
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+      var file = fileInput.files[0];
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        var base64 = ev.target.result.split(',')[1];
+        doSave(base64, file.type, file.name);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      doSave();
+    }
+  }
+
+  /* ============================= Edit overlay ============================= */
+
+  function openEditOverlay(ev) {
+    var overlay = document.getElementById('edit-overlay');
+    overlay.classList.remove('hidden');
+    document.getElementById('edit-status').style.display = 'none';
+    document.getElementById('edit-voucher-file-name').style.display = 'none';
+    document.getElementById('edit-voucher-current').style.display = 'none';
+    document.getElementById('edit-voucher-file').value = '';
+    populateDestinoSelects();
+
+    var form = document.getElementById('form-edit');
+    form._idx.value = ev._editIdx || '';
+    form.Fecha.value = ev.Fecha || '';
+    form.Hora.value = ev.Hora || '';
+    form['Hora Fin'].value = ev['Hora Fin'] || '';
+    form.Tipo.value = ev.Tipo || '';
+    form.Titulo.value = ev.Titulo || '';
+    form.Subtitulo.value = ev.Subtitulo || '';
+    form.Destino.value = ev.Destino || '';
+    form.Detalle.value = ev.Detalle || '';
+    form.CodigoConfirmacion.value = ev.CodigoConfirmacion || '';
+    form.MapsURL.value = ev.MapsURL || '';
+    form.Telefono.value = ev.Telefono || '';
+    form['Zona Horaria'].value = ev['Zona Horaria'] || 'Europe/Rome';
+    form.VoucherURL.value = ev.VoucherURL || '';
+
+    if (ev.VoucherURL) {
+      var cur = document.getElementById('edit-voucher-current');
+      cur.textContent = 'Voucher actual: ' + ev.VoucherURL;
+      cur.style.display = 'block';
+    }
+
+    refreshIcons();
+  }
+  function closeEditOverlay() { document.getElementById('edit-overlay').classList.add('hidden'); }
+
+  function handleEditEvento(e) {
+    e.preventDefault();
+    var form = document.getElementById('form-edit');
+    var idx = form._idx.value;
+    var eventos = App.data.eventos || [];
+    var orig = eventos[Number(idx)];
+    if (!orig) return;
+
+    var data = {
+      Fecha: form.Fecha.value,
+      Hora: form.Hora.value,
+      'Hora Fin': form['Hora Fin'].value,
+      Tipo: form.Tipo.value,
+      Titulo: form.Titulo.value.trim(),
+      Subtitulo: form.Subtitulo.value.trim(),
+      Destino: form.Destino.value,
+      Detalle: form.Detalle.value.trim(),
+      CodigoConfirmacion: form.CodigoConfirmacion.value.trim(),
+      MapsURL: form.MapsURL.value.trim(),
+      Telefono: form.Telefono.value.trim(),
+      'Zona Horaria': form['Zona Horaria'].value,
+      VoucherURL: form.VoucherURL.value.trim(),
+      'Seguimiento Vuelo': orig['Seguimiento Vuelo'] || '',
+      'Fecha Fin': orig['Fecha Fin'] || '',
+      'Zona Horaria Fin': orig['Zona Horaria Fin'] || ''
+    };
+    if (!data.Fecha || !data.Hora || !data.Tipo || !data.Titulo) {
+      showEditStatus('Completá fecha, hora, tipo y título', true);
+      return;
+    }
+    var btn = document.getElementById('btn-save-edit');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+
+    var fileInput = document.getElementById('edit-voucher-file');
+
+    function doSave(fileBase64, fileMime, fileName) {
+      google.script.run.withSuccessHandler(function (result) {
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+        if (result.ok) {
+          showEditStatus('Evento actualizado ✓');
+          google.script.run.withSuccessHandler(function (d) { onDataLoaded(d); }).getAppData();
+        } else {
+          showEditStatus(result.error || 'Error al guardar', true);
+        }
+      }).withFailureHandler(function (err) {
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+        showEditStatus('Error: ' + (err.message || err), true);
+      }).actualizarEvento(Number(form._idx.value), data, fileBase64 || null, fileMime || null, fileName || null);
+    }
+
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+      var file = fileInput.files[0];
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        var base64 = ev.target.result.split(',')[1];
+        doSave(base64, file.type, file.name);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      doSave();
+    }
+  }
+
+  function showEditStatus(msg, isError) {
+    var el = document.getElementById('edit-status');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.color = isError ? '#dc2626' : 'var(--accent)';
+  }
+
+  function copyToClipboard(text) {
+    var done = function () { showToast('Copiado: ' + text); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text, done); });
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { /* no-op */ }
+    document.body.removeChild(ta);
+  }
+
+  var toastTimer = null;
+  function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.add('hidden'); }, 1800);
+  }
+
+})();
+</script>
+
+  </body>
+</html>
