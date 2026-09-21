@@ -1194,10 +1194,13 @@
       localStorage.removeItem(GH_TOKEN_KEY);
     }
 
-    if (result && (result.error === 'login_required' || result.logged === false)) {
-      if (action !== 'login') {
-        localStorage.removeItem(GH_TOKEN_KEY);
-      }
+    if (
+      result &&
+      (result.error === 'login_required' || result.logged === false) &&
+      action !== 'login' &&
+      localStorage.getItem(GH_TOKEN_KEY) === token
+    ) {
+      localStorage.removeItem(GH_TOKEN_KEY);
     }
 
     return result;
@@ -1217,7 +1220,7 @@
       case 'saveSettings':
         return { settings: args[0] };
       case 'forceLogout':
-        return { code: args[0] };
+        return { sessionId: args[0] };
       case 'agregarLugar':
         return { data: args[0] };
       case 'agregarEvento':
@@ -1307,7 +1310,7 @@
         showLoginScreen();
       }
     }).withFailureHandler(function () {
-      showLoginScreen();
+      onLoadError();
     }).checkSession();
   }
 
@@ -1334,11 +1337,17 @@
   }
 
   function handleLogin() {
+    var button = document.getElementById('btn-login');
+    if (button.disabled) return;
+    button.disabled = true;
+    button.textContent = 'Ingresando…';
+
     var input = document.getElementById('login-input');
     var code = input.value.trim();
     if (!code) return;
     var errEl = document.getElementById('login-error');
     errEl.textContent = '';
+
     google.script.run.withSuccessHandler(function (result) {
       if (result.ok) {
         App.userRole = result.rol;
@@ -1351,6 +1360,8 @@
       }
     }).withFailureHandler(function () {
       errEl.textContent = 'Error de conexión';
+      button.disabled = false;
+      button.textContent = 'Ingresar';
     }).login(code);
   }
 
@@ -2426,27 +2437,27 @@
       
       var sessions = result.sessions || {};
       var container = document.getElementById('admin-sessions-list');
-      var codes = Object.keys(sessions);
+      var sessionIds = Object.keys(sessions);
       
-      if (codes.length === 0) {
+      if (sessionIds.length === 0) {
         container.innerHTML = '<div class="empty-day">No hay sesiones activas</div>';
         return;
       }
       
       var html = '';
-      codes.forEach(function(code) {
-        var session = sessions[code];
+      sessionIds.forEach(function(sessionId) {
+        var session = sessions[sessionId];
         var timeAgo = getTimeAgo(session.timestamp);
-        var isCurrentUser = App.data && App.data.userCode === code;
+        var isCurrentUser = session.current === true;
         
         html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">';
         html += '<div>';
-        html += '<div style="font-weight:500">' + escapeHtml(session.nombre || code) + '</div>';
+        html += '<div style="font-weight:500">' + escapeHtml(session.nombre || sessionId) + '</div>';
         html += '<div style="font-size:12px;color:var(--text-muted)">' + session.rol + ' · ' + timeAgo + '</div>';
         html += '</div>';
         
         if (!isCurrentUser) {
-          html += '<button class="icon-btn" onclick="forceLogoutUser(\'' + code + '\')" title="Cerrar sesión">';
+          html += '<button class="icon-btn" onclick="forceLogoutUser(\'' + sessionId + '\')" title="Cerrar sesión">';
           html += '<i data-lucide="log-out"></i>';
           html += '</button>';
         } else {
@@ -2476,7 +2487,7 @@
     return 'Hace ' + days + ' días';
   }
 
-  function forceLogoutUser(code) {
+  function forceLogoutUser(sessionId) {
     if (!confirm('¿Cerrar la sesión de este usuario?')) return;
     
     google.script.run.withSuccessHandler(function(result) {
@@ -2486,7 +2497,7 @@
       } else {
         showToast('Error al cerrar sesión');
       }
-    }).forceLogout(code);
+    }).forceLogout(sessionId);
   }
 
   function applyTheme(tema) {
