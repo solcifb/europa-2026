@@ -1337,11 +1337,17 @@
   }
 
   function handleLogin() {
+    var button = document.getElementById('btn-login');
+    if (button.disabled) return;
+    button.disabled = true;
+    button.textContent = 'Ingresando…';
+
     var input = document.getElementById('login-input');
     var code = input.value.trim();
     if (!code) return;
     var errEl = document.getElementById('login-error');
     errEl.textContent = '';
+
     google.script.run.withSuccessHandler(function (result) {
       if (result.ok) {
         App.userRole = result.rol;
@@ -1354,6 +1360,8 @@
       }
     }).withFailureHandler(function () {
       errEl.textContent = 'Error de conexión';
+      button.disabled = false;
+      button.textContent = 'Ingresar';
     }).login(code);
   }
 
