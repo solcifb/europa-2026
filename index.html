@@ -1341,31 +1341,53 @@
 
   function handleLogin() {
     var button = document.getElementById('btn-login');
+    var input = document.getElementById('login-input');
+    var errEl = document.getElementById('login-error');
+  
     if (button.disabled) return;
+  
+    var code = input.value.trim();
+  
+    // Validar antes de deshabilitar el botón
+    if (!code) {
+      errEl.textContent = 'Ingresá el código';
+      input.focus();
+      return;
+    }
+  
     button.disabled = true;
     button.textContent = 'Ingresando…';
-
-    var input = document.getElementById('login-input');
-    var code = input.value.trim();
-    if (!code) return;
-    var errEl = document.getElementById('login-error');
     errEl.textContent = '';
-
-    google.script.run.withSuccessHandler(function (result) {
-      if (result.ok) {
-        App.userRole = result.rol;
-        App.loggedIn = true;
-        google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getAppData();
-      } else {
-        errEl.textContent = result.error || 'Código inválido';
-        input.value = '';
-        input.focus();
-      }
-    }).withFailureHandler(function () {
-      errEl.textContent = 'Error de conexión';
-      button.disabled = false;
-      button.textContent = 'Ingresar';
-    }).login(code);
+  
+    google.script.run
+      .withSuccessHandler(function (result) {
+        if (result.ok) {
+          App.userRole = result.rol;
+          App.loggedIn = true;
+  
+          google.script.run
+            .withSuccessHandler(onDataLoaded)
+            .withFailureHandler(onLoadError)
+            .getAppData();
+  
+        } else {
+          errEl.textContent = result.error || 'Código inválido';
+          input.value = '';
+          input.focus();
+  
+          // Reactivar botón
+          button.disabled = false;
+          button.textContent = 'Ingresar';
+        }
+      })
+      .withFailureHandler(function () {
+        errEl.textContent = 'Error de conexión';
+  
+        // Reactivar botón
+        button.disabled = false;
+        button.textContent = 'Ingresar';
+      })
+      .login(code);
   }
 
   function onDataLoaded(data) {
