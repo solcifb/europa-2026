@@ -533,6 +533,7 @@
     position: absolute; inset: 0; background: rgba(15,18,28,0.5);
     display: flex; align-items: flex-end; z-index: 20;
   }
+  .hidden,
   .overlay.hidden { display: none; }
   .overlay-panel {
     background: var(--bg); width: 100%; max-height: 82%; border-radius: 22px 22px 0 0;
@@ -590,6 +591,8 @@
     margin-top: 16px; width: 100%; border: none; background: var(--primary); color: var(--primary-contrast);
     padding: 14px; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;
   }
+
+  .btn-block[disabled] { background: var(--text-muted); cursor: default; }
 
   /* ---------- Add form ---------- */
   .add-form { display: flex; flex-direction: column; gap: 0; overflow-y: auto; flex: 1; }
@@ -2457,7 +2460,7 @@
         html += '</div>';
         
         if (!isCurrentUser) {
-          html += '<button class="icon-btn" onclick="forceLogoutUser(\'' + sessionId + '\')" title="Cerrar sesión">';
+          html += '<button class="icon-btn" data-force-logout="' + escapeHtml(sessionId) + '" title="Cerrar sesión">';
           html += '<i data-lucide="log-out"></i>';
           html += '</button>';
         } else {
@@ -2468,6 +2471,11 @@
       });
       
       container.innerHTML = html;
+      container.querySelectorAll('[data-force-logout]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          forceLogoutUser(button.getAttribute('data-force-logout'));
+        });
+      });
       refreshIcons();
     }).getActiveSessions();
   }
