@@ -1574,9 +1574,11 @@
     var nav = document.getElementById('bottom-nav');
     var checksCount = (App.data && App.data.checks) ? App.data.checks.length : 0;
 
-    var items = NAV_ITEMS.filter(function (item) {
-      return item.id !== 'checks' || checksCount > 0;
-    });
+var items = NAV_ITEMS.filter(function (item) {
+  return item.id !== 'checks' ||
+    (App.userRole === 'master' && checksCount > 0);
+});
+
     items.sort(function (a, b) {
       if (a.id === 'checks') return 1;
       if (b.id === 'checks') return -1;
@@ -1598,6 +1600,10 @@
   }
 
   function setView(view) {
+if (view === 'checks' && App.userRole !== 'master') {
+  view = 'home';
+}
+
     App.view = view;
     document.querySelectorAll('.nav-item').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-nav') === view);
