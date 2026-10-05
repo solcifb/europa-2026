@@ -8,8 +8,16 @@
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
-      window.OneSignalDeferred.push(async function (OneSignal) {
-        await OneSignal.init({ appId: "f516ba5d-100f-4f5b-b3a6-2018bd3d7ece" });
+      window.OneSignalReady = new Promise(function (resolve) {
+        window.OneSignalDeferred.push(async function (OneSignal) {
+          try {
+            await OneSignal.init({ appId: "f516ba5d-100f-4f5b-b3a6-2018bd3d7ece", allowLocalhostAsSecureOrigin: true});
+            resolve(OneSignal);
+          } catch (error) {
+            console.error('No se pudo inicializar OneSignal:', error);
+            resolve(null);
+          }
+        });
       });
     </script>
     <script>
@@ -819,6 +827,16 @@
               <span class="switch-track"></span>
             </label>
           </div>
+           <div class="settings-row">
+            <div>
+              <div class="settings-label">Notificaciones</div>
+              <div class="settings-hint">Recibe alertas del viaje</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-notification">
+              <span class="switch-track"></span>
+            </label>
+          </div>
           <div class="settings-row">
             <div>
               <div class="settings-label">Zona horaria</div>
@@ -1155,6 +1173,72 @@
   };
 
 
+  /* ============================= OneSignal notifications ============================= */
+
+  var notificationSDK = null;
+  var notificationTasks = Promise.resolve();
+
+  function runNotificationTask(task) {
+    notificationTasks = notificationTasks.then(async function () {
+      var sdk = await window.OneSignalReady;
+      if (sdk) await task(sdk);
+    }).catch(function (error) {
+      console.error('No se pudo actualizar OneSignal:', error);
+    });
+    return notificationTasks;
+  }
+
+  function updateNotificationToggle() {
+    var toggle = document.getElementById('toggle-notification');
+    var supported = notificationSDK && notificationSDK.Notifications.isPushSupported();
+    toggle.disabled = !supported || !App.loggedIn;
+    toggle.checked = !!(supported && App.loggedIn && notificationSDK.User.PushSubscription.optedIn);
+    toggle.parentElement.style.opacity = toggle.disabled ? '0.5' : '1';
+  }
+
+  async function syncNotificationRole(sdk) {
+    // El rol viene de la sesión; no usar el rol ni el token como External ID.
+    if (App.loggedIn && App.userRole) {
+      await sdk.User.addTag('rol', String(App.userRole));
+    } else {
+      if (sdk.User.PushSubscription.optedIn) await sdk.User.PushSubscription.optOut();
+      await sdk.User.removeTag('rol');
+      if (sdk.User.externalId) await sdk.logout();
+    }
+    updateNotificationToggle();
+  }
+
+  function syncNotifications() {
+    return runNotificationTask(syncNotificationRole);
+  }
+
+  function initNotifications() {
+    updateNotificationToggle();
+    runNotificationTask(function (sdk) {
+      notificationSDK = sdk;
+      // Registrar una sola vez, también cuando getAppData vuelve a cargar datos.
+      sdk.User.PushSubscription.addEventListener('change', function () {
+        syncNotifications();
+      });
+      sdk.Notifications.addEventListener('permissionChange', updateNotificationToggle);
+      updateNotificationToggle();
+    });
+
+    document.getElementById('toggle-notification').addEventListener('change', function (event) {
+      var enabled = event.target.checked;
+      event.target.disabled = true;
+      runNotificationTask(async function (sdk) {
+        await syncNotificationRole(sdk);
+        if (!App.loggedIn || !App.userRole) return;
+        if (enabled) {
+          await sdk.User.PushSubscription.optIn();
+        } else {
+          await sdk.User.PushSubscription.optOut();
+        }
+      }).then(updateNotificationToggle);
+    });
+  }
+
   /* ============================= GitHub ↔ Cloudflare API ============================= */
   /*
    * El Index original puede seguir usando google.script.run.
@@ -1309,12 +1393,14 @@
 
   function init() {
     bindGlobalUI();
+    initNotifications();
     bindDaySwipe();
     refreshIcons();
     google.script.run.withSuccessHandler(function (result) {
       if (result.logged) {
         App.userRole = result.rol;
         App.loggedIn = true;
+        syncNotifications();
         google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getAppData();
       } else {
         showLoginScreen();
@@ -1325,6 +1411,10 @@
   }
 
   function showLoginScreen() {
+    App.loggedIn = false;
+    App.userRole = null;
+    App.data = null;
+    syncNotifications();
     document.getElementById('view-root').innerHTML = renderLogin();
     document.getElementById('btn-login').addEventListener('click', handleLogin);
     document.getElementById('login-input').addEventListener('keydown', function (e) {
@@ -1371,6 +1461,7 @@
         if (result.ok) {
           App.userRole = result.rol;
           App.loggedIn = true;
+          syncNotifications();
   
           google.script.run
             .withSuccessHandler(onDataLoaded)
@@ -1406,16 +1497,19 @@
     App.userRole = data.userRole || App.userRole;
     App.settings = data.settings || App.settings;
     applyTheme(App.settings.tema);
+
+    syncNotifications();
+
     document.getElementById('toggle-theme').checked = App.settings.tema === 'dark';
     document.getElementById('select-timezone').value = App.settings.zonaHoraria || 'original';
-
+    
     App.days = computeDays(data.config.FechaInicio, data.config.FechaFin);
     App.dayIndex = defaultDayIndex();
     document.getElementById('topbar-title').textContent = data.config.NombreViaje || 'Europa 2026';
 
     // Show add button only for master
     document.getElementById('btn-add').style.display = App.userRole === 'master' ? '' : 'none';
-
+    
     renderBottomNav();
 
     var initialView = 'home';
