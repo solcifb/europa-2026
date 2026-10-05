@@ -5,6 +5,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/1314/1314529.png">
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      window.OneSignalDeferred.push(async function (OneSignal) {
+        await OneSignal.init({ appId: "f516ba5d-100f-4f5b-b3a6-2018bd3d7ece" });
+      });
+    </script>
     <script>
       (function () {
         // Apps Script's HtmlService iframe wrapper can make CSS media queries unreliable;
