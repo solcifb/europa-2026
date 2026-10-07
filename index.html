@@ -3,15 +3,22 @@
   <head>
     <base target="_top">
     <meta charset="utf-8">
+    <title>Europa 2026</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="public/apple-touch-icon.png">
+    <meta name="theme-color" content="#1c2333">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <link rel="icon" type="image/png" href="public/icon.png">
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" async></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
       window.OneSignalReady = new Promise(function (resolve) {
         window.OneSignalDeferred.push(async function (OneSignal) {
           try {
-            await OneSignal.init({ appId: "f516ba5d-100f-4f5b-b3a6-2018bd3d7ece", allowLocalhostAsSecureOrigin: true});
+            await OneSignal.init({ appId: "f516ba5d-100f-4f5b-b3a6-2018bd3d7ece", allowLocalhostAsSecureOrigin: true,
+              serviceWorkerPath: new URL("push/onesignal-sw.js", document.baseURI).pathname.slice(1),
+              serviceWorkerParam: { scope: new URL("push/", document.baseURI).pathname }});
             resolve(OneSignal);
           } catch (error) {
             console.error('No se pudo inicializar OneSignal:', error);
@@ -43,6 +50,12 @@
       })();
     </script>
     <style>
+  [hidden] { display: none !important; }
+  .pwa-status { flex: 0 0 auto; padding: 6px 12px; background: var(--accent-soft); color: var(--text); font-size: 12px; text-align: center; }
+  .pwa-status button { color: inherit; background: transparent; border: 0; text-decoration: underline; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hero, .destino-card { background-color: #1c2333; }
+
   :root {
     color-scheme: light;
   }
@@ -75,7 +88,6 @@
     --nav-height: 64px;
     --topbar-height: 52px;
 
-    max-width: 480px;
     margin: 0 auto;
     height: 100vh;
     height: 100dvh;
@@ -653,7 +665,6 @@
   }
 
   /* ========== TABLET ========== */
-  html.bp-tablet #app-frame { max-width: 100%; }
   html.bp-tablet .topbar { padding: 0 16px; }
   html.bp-tablet .topbar-title { font-size: 17px; }
   html.bp-tablet .view-root { padding: 0 0 32px; }
@@ -687,7 +698,6 @@
   /* ========== DESKTOP ========== */
   html.bp-desktop, html.bp-desktop body { background: #1a1d28; }
   html.bp-desktop #app-frame {
-    max-width: none;
     height: 100vh;
     height: 100dvh;
     flex-direction: column;
@@ -778,9 +788,11 @@
   html.bp-desktop-lg .destino-card { width: 200px; height: 130px; }
   html.bp-desktop-lg .toast { left: calc(76px + 50%); }
 </style>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+    <link rel="stylesheet" href="public/vendor/leaflet.css" />
+    <script src="public/vendor/leaflet.js" defer></script>
+    <script src="public/vendor/lucide.min.js" defer></script>
+    <script src="offline-store.js"></script>
+    <script src="pwa.js"></script>
   </head>
   <body>
     <div id="app-frame" data-theme="dark">
@@ -793,6 +805,8 @@
         </div>
       </header>
 
+      <div id="offline-status" class="pwa-status" role="status" hidden>Sin conexión</div>
+      <div id="app-update" class="pwa-status" role="status" hidden>Hay una nueva versión disponible <button id="btn-update" type="button">Actualizar</button></div>
       <main id="view-container">
         <div id="view-root" class="view-root">
           <div class="loading">Cargando viaje…</div>
@@ -848,6 +862,9 @@
               <option value="europa">Horario Europa</option>
             </select>
           </div>
+          <div id="trip-updated" class="settings-hint" style="margin:12px 0"></div>
+          <button class="btn-block" id="btn-install" type="button" hidden>Instalar aplicación</button>
+          <p id="install-hint" class="settings-hint" hidden>En Safari, abrí Compartir y elegí “Agregar a pantalla de inicio”.</p>
           <button class="btn-block" id="btn-logout" style="background:var(--accent);margin-top:8px">Cerrar sesión</button>
           
           <!-- Admin Section (only visible for master users) -->
@@ -1172,6 +1189,8 @@
     settings: { tema: 'dark', zonaHoraria: 'original' }
   };
 
+  var PWA = createPWA(App, { onDataLoaded: onDataLoaded, showToast: showToast, updateNotificationToggle: updateNotificationToggle, showLoginScreen: showLoginScreen, apiGH: apiGH, onLoadError: onLoadError, setView: setView, syncNotifications: syncNotifications });
+
 
   /* ============================= OneSignal notifications ============================= */
 
@@ -1191,7 +1210,7 @@
   function updateNotificationToggle() {
     var toggle = document.getElementById('toggle-notification');
     var supported = notificationSDK && notificationSDK.Notifications.isPushSupported();
-    toggle.disabled = !supported || !App.loggedIn;
+    toggle.disabled = !supported || !App.loggedIn || !PWA.canWrite();
     toggle.checked = !!(supported && App.loggedIn && notificationSDK.User.PushSubscription.optedIn);
     toggle.parentElement.style.opacity = toggle.disabled ? '0.5' : '1';
   }
@@ -1199,6 +1218,7 @@
   async function syncNotificationRole(sdk) {
     // El rol viene de la sesión; no usar el rol ni el token como External ID.
     if (App.loggedIn && App.userRole) {
+      if (!PWA.canWrite()) return;
       await sdk.User.addTag('rol', String(App.userRole));
     } else {
       if (sdk.User.PushSubscription.optedIn) await sdk.User.PushSubscription.optOut();
@@ -1209,6 +1229,7 @@
   }
 
   function syncNotifications() {
+    if (!navigator.onLine) return Promise.resolve();
     return runNotificationTask(syncNotificationRole);
   }
 
@@ -1249,54 +1270,57 @@
 
   async function apiGH(action, payload) {
     payload = payload || {};
-    var token = localStorage.getItem(GH_TOKEN_KEY) || null;
-
-    var response = await fetch(GH_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        action: action,
-        payload: payload,
-        token: token
-      })
-    });
-
-    var envelope;
-    try {
-      envelope = await response.json();
-    } catch (e) {
-      throw new Error('La API devolvió una respuesta inválida');
+    var token = PWA.token();
+    if (action === 'logout') {
+      // La salida local no espera a la red; el token capturado solo revoca esta sesión.
+      await PWA.clearSession(token);
+      if (navigator.onLine && token) {
+        fetch(GH_API_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, payload: {}, token: token }),
+          signal: AbortSignal.timeout(15000)
+        }).catch(function () {});
+      }
+      return { ok: true };
     }
-
-    if (!response.ok) {
+    if (PWA.mutating.indexOf(action) !== -1 && !PWA.canWrite()) {
+      throw new Error('Necesitás conexión para realizar cambios');
+    }
+    if (!navigator.onLine) throw new Error('Sin conexión');
+    var response;
+    try {
+      response = await fetch(GH_API_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: action, payload: payload, token: token }),
+        signal: AbortSignal.timeout(15000)
+      });
+    } catch (error) { PWA.lostConnection(); throw error; }
+    if (PWA.token() !== token) throw new Error('La sesión cambió');
+    var envelope;
+    try { envelope = await response.json(); }
+    catch (_) { throw new Error('La API devolvió una respuesta inválida'); }
+    if (PWA.token() !== token) throw new Error('La sesión cambió');
+    if (!response.ok || !envelope.ok) {
+      PWA.lostConnection();
       throw new Error(envelope.error || ('Error HTTP ' + response.status));
     }
-
-    if (!envelope.ok) {
-      throw new Error(envelope.error || 'Error del servidor');
-    }
-
     var result = envelope.result;
-
-    if (action === 'login' && result && result.ok && result.token) {
+    if (!result || typeof result !== 'object') throw new Error('La API devolvió una respuesta inválida');
+    if (result.error === 'login_required' || result.logged === false) {
+      await PWA.clearSession(token);
+      if (PWA.token()) throw new Error('La sesión cambió');
+      return result;
+    }
+    if (action === 'login' && result.ok && result.token) {
+      await PWA.clearSession(token);
       localStorage.setItem(GH_TOKEN_KEY, result.token);
+      await PWA.session(result, result.token);
+    } else if (action === 'checkSession' && result.logged) {
+      await PWA.session(result, token);
+    } else if (action === 'getAppData' && !result.error) {
+      await PWA.acceptData(result, token);
     }
-
-    if (action === 'logout') {
-      localStorage.removeItem(GH_TOKEN_KEY);
-    }
-
-    if (
-      result &&
-      (result.error === 'login_required' || result.logged === false) &&
-      action !== 'login' &&
-      localStorage.getItem(GH_TOKEN_KEY) === token
-    ) {
-      localStorage.removeItem(GH_TOKEN_KEY);
-    }
-
+    if (action !== 'login' && action !== 'checkSession' && PWA.token() !== token) throw new Error('La sesión cambió');
     return result;
   }
 
@@ -1396,25 +1420,15 @@
     initNotifications();
     bindDaySwipe();
     refreshIcons();
-    google.script.run.withSuccessHandler(function (result) {
-      if (result.logged) {
-        App.userRole = result.rol;
-        App.loggedIn = true;
-        syncNotifications();
-        google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getAppData();
-      } else {
-        showLoginScreen();
-      }
-    }).withFailureHandler(function () {
-      onLoadError();
-    }).checkSession();
+    void PWA.initInstall();
+    void PWA.start();
   }
 
   function showLoginScreen() {
     App.loggedIn = false;
     App.userRole = null;
     App.data = null;
-    syncNotifications();
+    if (navigator.onLine) syncNotifications();
     document.getElementById('view-root').innerHTML = renderLogin();
     document.getElementById('btn-login').addEventListener('click', handleLogin);
     document.getElementById('login-input').addEventListener('keydown', function (e) {
@@ -1428,7 +1442,7 @@
     return '<div class="login-screen">' +
       '<div class="login-card">' +
         '<div class="login-title">Europa 2026</div>' +
-        '<div class="login-hint">Ingresá tu código para acceder</div>' +
+        '<div class="login-hint">' + (navigator.onLine ? 'Ingresá tu código para acceder' : 'Conectate para ingresar y descargar el viaje.') + '</div>' +
         '<input type="text" id="login-input" placeholder="Código de acceso" autocomplete="off">' +
         '<button class="btn-block" id="btn-login">Ingresar</button>' +
         '<div id="login-error" class="login-error"></div>' +
@@ -1493,18 +1507,21 @@
       showLoginScreen();
       return;
     }
+    var previousView = App.data ? App.view : null;
+    var previousDate = App.days[App.dayIndex] && App.days[App.dayIndex].date;
     App.data = data;
     App.userRole = data.userRole || App.userRole;
     App.settings = data.settings || App.settings;
     applyTheme(App.settings.tema);
 
-    syncNotifications();
+    if (PWA.canWrite()) syncNotifications();
 
     document.getElementById('toggle-theme').checked = App.settings.tema === 'dark';
     document.getElementById('select-timezone').value = App.settings.zonaHoraria || 'original';
     
     App.days = computeDays(data.config.FechaInicio, data.config.FechaFin);
-    App.dayIndex = defaultDayIndex();
+    var matchingDay = previousDate ? App.days.findIndex(function (day) { return day.date === previousDate; }) : -1;
+    App.dayIndex = matchingDay >= 0 ? matchingDay : defaultDayIndex();
     document.getElementById('topbar-title').textContent = data.config.NombreViaje || 'Europa 2026';
 
     // Show add button only for master
@@ -1516,11 +1533,16 @@
     if (App.data.checks && App.data.checks.length > 0) {
       initialView = 'checks';
     }
-    setView(initialView);
+    var scrollTop = document.getElementById('view-container').scrollTop;
+    setView(previousView || initialView);
+    if (previousView) document.getElementById('view-container').scrollTop = scrollTop;
+    if (!document.getElementById('search-overlay').classList.contains('hidden')) runSearch(document.getElementById('search-input').value);
     refreshIcons();
+    PWA.updateUI();
   }
 
   function onLoadError(err) {
+    if (App.data) { PWA.updateUI(); return; }
     document.getElementById('view-root').innerHTML =
       '<div class="loading">No se pudo cargar el viaje.<br>' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
   }
@@ -1720,6 +1742,7 @@ if (view === 'checks' && App.userRole !== 'master') {
     document.getElementById('view-container').scrollTop = 0;
     bindViewEvents(view);
     refreshIcons();
+    PWA.updateUI();
   }
 
   /* ============================= Home ============================= */
@@ -2058,7 +2081,7 @@ if (view === 'checks' && App.userRole !== 'master') {
   }
 
   function handleMarcarCheck(checkId, estado) {
-    if (App.userRole !== 'master') return;
+    if (App.userRole !== 'master' || !PWA.requireConnection()) return;
     google.script.run.withSuccessHandler(function (result) {
       if (result.ok) {
         showToast(estado === 'no_realizado' ? 'Marcado como no realizado' : 'Check marcado');
@@ -2071,7 +2094,7 @@ if (view === 'checks' && App.userRole !== 'master') {
       } else {
         showToast('Error al marcar check');
       }
-    }).marcarCheck(checkId, estado);
+    }).withFailureHandler(function (error) { showToast(error.message || 'No se pudo marcar el check'); }).marcarCheck(checkId, estado);
   }
 
   /* ============================= Plan ============================= */
@@ -2189,6 +2212,10 @@ if (view === 'checks' && App.userRole !== 'master') {
   }
 
   function initMapaLeaflet(lugares) {
+    if (!navigator.onLine) {
+      document.getElementById('mapa-status').textContent = 'Necesitás conexión para ver el mapa. Podés consultar la lista de lugares.';
+      return;
+    }
     if (typeof L === 'undefined') {
       document.getElementById('mapa-status').textContent = 'Error: no se pudo cargar el mapa.';
       return;
@@ -2397,7 +2424,7 @@ if (view === 'checks' && App.userRole !== 'master') {
         el.addEventListener('click', function () { copyToClipboard(el.getAttribute('data-value')); });
       });
       // Edit event on long-press (master only)
-      if (App.userRole === 'master') {
+      if (App.userRole === 'master' && PWA.canWrite()) {
         var day = App.days[App.dayIndex];
         var dayEvents = getEventsForDate(day.date);
         var expanded = expandEventsForDisplay(dayEvents);
@@ -2547,20 +2574,14 @@ if (view === 'checks' && App.userRole !== 'master') {
       if (App.view === 'day') setView('day');
     });
     document.getElementById('btn-logout').addEventListener('click', function () {
-      google.script.run.withSuccessHandler(function () {
-        App.loggedIn = false;
-        App.userRole = null;
-        App.data = null;
-        closeSettings();
-        showLoginScreen();
-      }).logout();
+      void apiGH('logout', {}).catch(function (error) { console.error(error); });
     });
   }
 
   /* ============================= Admin functions ============================= */
 
   function renderAdminSessions() {
-    if (App.userRole !== 'master') return;
+    if (App.userRole !== 'master' || !PWA.canWrite()) return;
     
     google.script.run.withSuccessHandler(function(result) {
       if (result.error) {
@@ -2626,6 +2647,7 @@ if (view === 'checks' && App.userRole !== 'master') {
   }
 
   function forceLogoutUser(sessionId) {
+    if (!PWA.requireConnection()) return;
     if (!confirm('¿Cerrar la sesión de este usuario?')) return;
     
     google.script.run.withSuccessHandler(function(result) {
@@ -2647,10 +2669,12 @@ if (view === 'checks' && App.userRole !== 'master') {
   }
 
   function persistSettings() {
-    google.script.run.saveSettings(App.settings);
+    PWA.preferences();
+    if (PWA.canWrite()) google.script.run.withFailureHandler(function () { showToast('La preferencia se guardó solo en este dispositivo'); }).saveSettings(App.settings);
   }
 
   function openSearch() {
+    if (!App.data) return;
     document.getElementById('search-overlay').classList.remove('hidden');
     document.getElementById('search-input').value = '';
     document.getElementById('search-results').innerHTML = '<div class="search-empty">Escribí para buscar en tu viaje.</div>';
@@ -2694,7 +2718,7 @@ if (view === 'checks' && App.userRole !== 'master') {
     
     // Show admin section for master users
     var adminSection = document.getElementById('admin-section');
-    if (App.userRole === 'master') {
+    if (App.userRole === 'master' && PWA.canWrite()) {
       adminSection.classList.remove('hidden');
       renderAdminSessions();
     } else {
@@ -2706,6 +2730,7 @@ if (view === 'checks' && App.userRole !== 'master') {
   /* ============================= Add overlay ============================= */
 
   function openAddOverlay() {
+    if (!PWA.requireConnection()) return;
     document.getElementById('add-overlay').classList.remove('hidden');
     document.getElementById('add-status').style.display = 'none';
     populateDestinoSelects();
@@ -2745,6 +2770,7 @@ if (view === 'checks' && App.userRole !== 'master') {
 
   function handleAddLugar(e) {
     e.preventDefault();
+    if (!PWA.requireConnection()) return;
     var form = document.getElementById('form-lugar');
     var data = {
       Nombre: form.Nombre.value.trim(),
@@ -2776,6 +2802,7 @@ if (view === 'checks' && App.userRole !== 'master') {
 
   function handleAddEvento(e) {
     e.preventDefault();
+    if (!PWA.requireConnection()) return;
     var form = document.getElementById('form-evento');
     var fileInput = document.getElementById('voucher-file');
     var data = {
@@ -2834,6 +2861,7 @@ if (view === 'checks' && App.userRole !== 'master') {
   /* ============================= Edit overlay ============================= */
 
   function openEditOverlay(ev) {
+    if (!PWA.requireConnection()) return;
     var overlay = document.getElementById('edit-overlay');
     overlay.classList.remove('hidden');
     document.getElementById('edit-status').style.display = 'none';
@@ -2870,6 +2898,7 @@ if (view === 'checks' && App.userRole !== 'master') {
 
   function handleEditEvento(e) {
     e.preventDefault();
+    if (!PWA.requireConnection()) return;
     var form = document.getElementById('form-edit');
     var idx = form._idx.value;
     var eventos = App.data.eventos || [];

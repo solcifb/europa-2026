@@ -1,0 +1,67 @@
+# Europa 2026
+
+Aplicación de viaje con frontend estático en GitHub Pages y API de Apps Script mediante Cloudflare. Permite instalarla y consultar el último viaje descargado sin conexión.
+
+## Uso durante el viaje
+
+Ingresá una vez con conexión y dejá que cargue el viaje. En las siguientes aperturas, la información guardada aparece primero; si hay conexión, se actualiza en segundo plano sin cambiar la vista seleccionada.
+
+Sin conexión se pueden consultar itinerario, plan, búsqueda, lista de lugares, teléfonos, datos y enlaces de documentos, y los estados de checks de la última descarga. Las imágenes externas pueden no aparecer. El mapa interactivo y los archivos enlazados necesitan internet.
+
+Las altas, ediciones, checks y administración requieren sesión validada y viaje actualizado online. No se guardan operaciones pendientes. Tema y zona horaria pueden cambiar localmente sin conexión.
+
+La consulta guardada vence 30 días después del login original. Actualizar el viaje no extiende ese plazo. Cerrar sesión borra la copia local, incluso offline, y limpia otras pestañas. La revocación del servidor y los cambios remotos de permisos se detectan al reconectar. El navegador puede eliminar los datos locales, por ejemplo al borrar los datos del sitio; en ese caso hay que descargar el viaje nuevamente.
+
+## Instalación
+
+En navegadores compatibles, usar **Ajustes → Instalar aplicación** o la opción de instalación del navegador. En iPhone/iPad, abrir en Safari y elegir **Compartir → Agregar a pantalla de inicio**. Las notificaciones requieren permiso y configuración de OneSignal; la consulta del viaje funciona independientemente de ellas.
+
+## Desarrollo y pruebas
+
+Servir la carpeta con un servidor HTTP local; por ejemplo:
+
+```sh
+python -m http.server 8080
+```
+
+Abrir `http://localhost:8080/`. Los service workers requieren HTTPS o localhost; no funciona abrir el HTML como archivo.
+
+Pruebas automatizadas con Node.js 18 o posterior:
+
+```sh
+node tests/notifications.cjs
+node tests/pwa.cjs
+```
+
+Las pruebas verifican políticas de sesión, render antes de red, recuperación offline, aislamiento, preferencias, almacenamiento fallido y notificaciones del backend. Las pruebas PWA usan almacenamiento simulado; IndexedDB y Cache Storage deben comprobarse también en navegador.
+
+Comprobaciones de aceptación en navegador:
+
+1. Ingresar online, esperar que cargue el viaje, cerrar y reabrir sin red. Consultar plan, búsqueda, lugares, teléfonos y checks; confirmar que no se emiten escrituras.
+2. Simular una API lenta o caída: el viaje guardado debe aparecer antes de completar la validación. Al actualizar, conservar vista, filtros y día.
+3. Verificar primer acceso offline, vencimiento, revocación al reconectar, cambio de usuario y logout entre dos pestañas.
+4. Instalar en Android/Chrome, iPhone/Safari y escritorio; probar push con la aplicación cerrada y apertura desde la notificación.
+5. Publicar una versión nueva: el aviso debe permitir seguir leyendo hasta aceptar **Actualizar**.
+
+La verificación local se realizó con Chrome: IndexedDB real, reapertura con red bloqueada, navegación y búsqueda, bloqueo de checks, logout offline, apertura antes de una API retenida y actualización del service worker. Las pruebas en dispositivos físicos y entrega real de push requieren el despliegue.
+
+## Publicación
+
+1. Incorporar los cambios de `Code.gs` al proyecto existente de Apps Script, conservando sus helpers y backend original. Publicar una nueva versión del despliegue usado por Cloudflare.
+2. Comprobar que `login` y `checkSession` devuelven `expiresAt` en milisegundos Unix, calculado desde la creación de la sesión. Cloudflare debe conservar ese campo dentro de `result`.
+3. Publicar los archivos del frontend en la misma base de GitHub Pages. Las rutas relativas admiten tanto raíz como `/europa-2026/`.
+4. Comprobar en HTTPS manifest, iconos y `sw.js`; luego descargar un viaje y reabrir sin red.
+5. Verificar OneSignal: `push/onesignal-sw.js` debe responder JavaScript y su scope debe quedar bajo la base publicada más `push/`. La PWA controla la base de la aplicación. Mantener configurado el mismo origen y App ID de OneSignal.
+6. Probar instalación y push en dispositivos reales antes de dar por terminado el despliegue.
+
+La publicación inspeccionada exponía `push/onesignal-sw.js`; las rutas predeterminadas de OneSignal en la raíz del dominio y del proyecto devolvían 404. Se conserva el archivo publicado y ahora se configura explícitamente su ruta. Si existen suscriptores registrados en otra URL, conservar ese archivo original al menos un año; no eliminar suscripciones ni desregistrar workers de push para limpiar la PWA.
+
+Un backend anterior sigue permitiendo uso online, pero sin `expiresAt` no se prepara una nueva copia offline con vencimiento fiable. Publicar primero el backend.
+
+## Mantenimiento de versiones
+
+Incrementar `RELEASE` en `sw.js` siempre que cambie la interfaz o un recurso precargado. El worker prepara la versión completa antes de ofrecer actualizar. La limpieza afecta únicamente las cachés de esta aplicación y su base de publicación; no borra IndexedDB ni los workers de OneSignal.
+
+Las respuestas de API y credenciales nunca se guardan en Cache Storage. IndexedDB guarda una sola copia asociada a la huella SHA-256 de la sesión, sin duplicar el token ni guardar `userCode`. Al cambiar el formato guardado, incrementar su versión y rechazar copias incompatibles.
+
+Las bibliotecas Lucide 0.344.0 y Leaflet 1.9.4 se sirven localmente con sus licencias en `public/vendor/`.
