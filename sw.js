@@ -1,5 +1,5 @@
 /* Incrementar RELEASE cuando cambie cualquier archivo de la interfaz. */
-const RELEASE = '2026-10-07-v8';
+const RELEASE = '2026-10-07-v9';
 const BASE = new URL('./', self.location.href);
 const PREFIX = 'europa2026-shell-' + BASE.pathname + '-';
 const CACHE = PREFIX + RELEASE;

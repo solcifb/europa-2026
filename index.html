@@ -92,11 +92,14 @@
     height: 100%;
     width: 100%;
     overflow: hidden;
-    overscroll-behavior: none;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
     background: #e9e4d8;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 
+  /* Permitir el gesto nativo sin desplazar el marco fijo de la app. */
+  html { overflow-y: auto; }
   body { position: fixed; inset: 0; }
 
   #app-frame {
@@ -217,7 +220,7 @@
     min-height: 0;
     min-width: 0;
     overflow-y: auto;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: auto;
     -webkit-overflow-scrolling: touch;
   }
   .view-root { padding: 0 0 24px; min-height: 100%; }
@@ -597,6 +600,7 @@
   /* ---------- Overlays (search / settings) ---------- */
   .overlay {
     position: absolute; inset: 0; background: rgba(15,18,28,0.8);
+    overflow: hidden; overscroll-behavior-y: contain;
     display: flex; align-items: flex-end; z-index: 20; backdrop-filter: blur(4px); 
 
   }
@@ -3069,7 +3073,7 @@
   }
 
   function hapticFeedback() {
-    if (navigator.vibrate) navigator.vibrate(50);
+    if (navigator.vibrate) navigator.vibrate(25);
   }
 
 })();
