@@ -4,7 +4,7 @@
     <base target="_top">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/1314/1314529.png">
+    <link rel="icon" type="image/png" href="public/icon.png">
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -2047,10 +2047,10 @@ if (view === 'checks' && App.userRole !== 'master') {
           (ck.EventoDestino ? '<div class="check-card-sub">' + escapeHtml(ck.EventoDestino) + '</div>' : '') +
           '<div class="check-card-time">' + timeHtml + '</div>' +
         '</div>' +
-        '<div class="check-card-actions">' +
+        (App.userRole === 'master' ? '<div class="check-card-actions">' +
           '<button class="check-btn" data-check-id="' + escapeHtml(ck.Id) + '" data-estado="hecho">Hecho ✓</button>' +
           '<button class="check-btn discard" data-check-id="' + escapeHtml(ck.Id) + '" data-estado="no_realizado">No realizado ✗</button>' +
-        '</div>' +
+        '</div>' : '') +
       '</div>';
     }).join('');
 
@@ -2058,6 +2058,7 @@ if (view === 'checks' && App.userRole !== 'master') {
   }
 
   function handleMarcarCheck(checkId, estado) {
+    if (App.userRole !== 'master') return;
     google.script.run.withSuccessHandler(function (result) {
       if (result.ok) {
         showToast(estado === 'no_realizado' ? 'Marcado como no realizado' : 'Check marcado');
