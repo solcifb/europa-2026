@@ -6,6 +6,7 @@
     return !!(data && !data.error && data.config &&
       /^\d{4}-\d{2}-\d{2}$/.test(data.config.FechaInicio) &&
       /^\d{4}-\d{2}-\d{2}$/.test(data.config.FechaFin) &&
+      tripExpiry(data.config.FechaInicio) > 0 && tripExpiry(data.config.FechaFin) > 0 &&
       data.config.FechaInicio <= data.config.FechaFin &&
       typeof data.userRole === 'string' && data.checksCompletados && typeof data.checksCompletados === 'object' && !Array.isArray(data.checksCompletados) && ARRAYS.every(key => Array.isArray(data[key])));
   }
@@ -15,8 +16,16 @@
   }
   function validSnapshot(value, owner, now = Date.now()) {
     return !!(value && value.version === FORMAT && value.owner === owner &&
-      Number.isFinite(value.expiresAt) && value.expiresAt > now &&
+      tripExpiry(value.data?.config?.FechaFin) > now &&
       Number.isFinite(value.savedAt) && validData(value.data));
+  }
+  // FechaFin no tiene hora: sumar 24 horas desde su medianoche local.
+  function tripExpiry(date) {
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return 0;
+    const [year, month, day] = date.split('-').map(Number);
+    const end = new Date(year, month - 1, day);
+    if (end.getFullYear() !== year || end.getMonth() !== month - 1 || end.getDate() !== day) return 0;
+    return end.getTime() + 24 * 60 * 60 * 1000;
   }
   function createStore(idb = root.indexedDB) {
     let connection;
@@ -52,10 +61,10 @@
       save: (snapshot, current = () => true) => transaction('readwrite', store => {
         if (current()) store.put(snapshot, 'current');
       }),
-      clear: owner => transaction('readwrite', store => {
+      clear: (owner, shouldClear = () => true) => transaction('readwrite', store => {
         const request = store.get('current');
         request.onsuccess = () => {
-          if (!owner || request.result?.owner === owner) store.delete('current');
+          if ((!owner || request.result?.owner === owner) && shouldClear(request.result)) store.delete('current');
         };
       }),
       preferences: (owner, settings) => transaction('readwrite', store => {
@@ -70,5 +79,5 @@
       })
     };
   }
-  root.TripOffline = { FORMAT, validData, fingerprint, validSnapshot, createStore };
+  root.TripOffline = { FORMAT, validData, fingerprint, validSnapshot, tripExpiry, createStore };
 })(typeof window === 'undefined' ? globalThis : window);

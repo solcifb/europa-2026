@@ -10,7 +10,7 @@ Sin conexión se pueden consultar itinerario, plan, búsqueda, lista de lugares,
 
 Las altas, ediciones, checks y administración requieren sesión validada y viaje actualizado online. No se guardan operaciones pendientes. Tema y zona horaria pueden cambiar localmente sin conexión.
 
-La consulta guardada vence 30 días después del login original. Actualizar el viaje no extiende ese plazo. Cerrar sesión borra la copia local, incluso offline, y limpia otras pestañas. La revocación del servidor y los cambios remotos de permisos se detectan al reconectar. El navegador puede eliminar los datos locales, por ejemplo al borrar los datos del sitio; en ese caso hay que descargar el viaje nuevamente.
+La copia guardada vence en `config.FechaFin + 24 horas`. `FechaFin` se interpreta a medianoche en la zona horaria del dispositivo: si termina el 15 de octubre, la copia vence el 16 a las 00:00. Cada descarga usa la fecha de finalización del viaje, independientemente del vencimiento de la sesión. Las copias existentes se evalúan con esta misma regla al reabrir. Cerrar sesión borra la copia local, incluso offline, y limpia otras pestañas. La revocación del servidor y los cambios remotos de permisos se detectan al reconectar. El navegador puede eliminar los datos locales, por ejemplo al borrar los datos del sitio; en ese caso hay que descargar el viaje nuevamente.
 
 ## Instalación
 
@@ -48,7 +48,7 @@ La verificación local se realizó con Chrome: IndexedDB real, reapertura con re
 ## Publicación
 
 1. Incorporar los cambios de `Code.gs` al proyecto existente de Apps Script, conservando sus helpers y backend original. Publicar una nueva versión del despliegue usado por Cloudflare.
-2. Comprobar que `login` y `checkSession` devuelven `expiresAt` en milisegundos Unix, calculado desde la creación de la sesión. Cloudflare debe conservar ese campo dentro de `result`.
+2. Comprobar que `getAppData` devuelve `config.FechaFin` con formato `YYYY-MM-DD`. `expiresAt` de login/sesión puede seguir utilizándose para validar cambios online, pero no condiciona el guardado ni la lectura offline.
 3. Publicar los archivos del frontend en la misma base de GitHub Pages. Las rutas relativas admiten tanto raíz como `/europa-2026/`.
 4. Comprobar en HTTPS manifest, iconos y `sw.js`; luego descargar un viaje y reabrir sin red.
 5. Verificar OneSignal: `push/onesignal-sw.js` debe responder JavaScript y su scope debe quedar bajo la base publicada más `push/`. La PWA controla la base de la aplicación. Mantener configurado el mismo origen y App ID de OneSignal.
@@ -56,7 +56,7 @@ La verificación local se realizó con Chrome: IndexedDB real, reapertura con re
 
 La publicación inspeccionada exponía `push/onesignal-sw.js`; las rutas predeterminadas de OneSignal en la raíz del dominio y del proyecto devolvían 404. Se conserva el archivo publicado y ahora se configura explícitamente su ruta. Si existen suscriptores registrados en otra URL, conservar ese archivo original al menos un año; no eliminar suscripciones ni desregistrar workers de push para limpiar la PWA.
 
-Un backend anterior sigue permitiendo uso online, pero sin `expiresAt` no se prepara una nueva copia offline con vencimiento fiable. Publicar primero el backend.
+El vencimiento de los datos guardados depende únicamente de la fecha del viaje; no requiere interpretar el token ni actualizar el backend para obtener metadatos de sesión. Una revocación confirmada online sigue eliminando el acceso local.
 
 ## Mantenimiento de versiones
 

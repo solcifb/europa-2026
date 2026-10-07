@@ -4,7 +4,7 @@ function createPWA(App, hooks) {
   var GH_TOKEN_KEY = 'europa2026_gh_token';
   'use strict';
   var store = TripOffline.createStore();
-  var expiresAt = 0, savedAt = 0, verifiedToken = null, refreshing = null;
+  var dataExpiresAt = 0, sessionExpiresAt = 0, savedAt = 0, verifiedToken = null, refreshing = null;
   var expiryTimer, generation = 0, storageWarning = false, localSettings = false;
   var installPrompt = null, waitingWorker = null, started = false;
   var mutating = ['marcarCheck', 'saveSettings', 'forceLogout', 'agregarLugar', 'agregarEvento', 'actualizarEvento'];
@@ -12,7 +12,7 @@ function createPWA(App, hooks) {
     try { return localStorage.getItem(GH_TOKEN_KEY); } catch (_) { return null; }
   }
   function canWrite() {
-    return navigator.onLine && !!token() && verifiedToken === token() && (!expiresAt || Date.now() < expiresAt);
+    return navigator.onLine && !!token() && verifiedToken === token() && (!sessionExpiresAt || Date.now() < sessionExpiresAt);
   }
   function updateUI() {
     var offline = document.getElementById('offline-status');
@@ -30,10 +30,10 @@ function createPWA(App, hooks) {
   }
   function armExpiry() {
     clearTimeout(expiryTimer);
-    if (expiresAt) expiryTimer = setTimeout(function () {
-      if (Date.now() >= expiresAt) clearSession();
+    if (dataExpiresAt) expiryTimer = setTimeout(function () {
+      if (Date.now() >= dataExpiresAt) void expireData();
       else armExpiry();
-    }, Math.max(1, Math.min(2147483647, expiresAt - Date.now())));
+    }, Math.max(1, Math.min(2147483647, dataExpiresAt - Date.now())));
   }
   function resetView() {
     App.data = null; App.days = []; App.loggedIn = false; App.userRole = null;
@@ -51,11 +51,27 @@ function createPWA(App, hooks) {
     var previous = expectedToken || token();
     if (expectedToken && token() !== expectedToken) return;
     generation++;
-    verifiedToken = null; expiresAt = 0; savedAt = 0; localSettings = false;
+    verifiedToken = null; dataExpiresAt = 0; sessionExpiresAt = 0; savedAt = 0; localSettings = false;
     clearTimeout(expiryTimer);
     try { localStorage.removeItem(GH_TOKEN_KEY); } catch (_) {}
     resetView();
     try { if (previous) await store.clear(await TripOffline.fingerprint(previous)); } catch (_) {}
+  }
+  async function expireData(current = token()) {
+    if (!current || token() !== current || dataExpiresAt > Date.now()) return;
+    dataExpiresAt = 0; savedAt = 0;
+    clearTimeout(expiryTimer);
+    // La copia vencida no cierra una sesión que todavía permite consultar online.
+    if (!navigator.onLine || verifiedToken !== current) {
+      verifiedToken = null;
+      resetView();
+      onLoadError({ message: 'Conectate para actualizar el viaje.' });
+    }
+    updateUI();
+    try {
+      await store.clear(await TripOffline.fingerprint(current),
+        function (snapshot) { return TripOffline.tripExpiry(snapshot?.data?.config?.FechaFin) <= Date.now(); });
+    } catch (_) {}
   }
   async function restore() {
     var current = token(), epoch = generation;
@@ -64,11 +80,10 @@ function createPWA(App, hooks) {
       var owner = await TripOffline.fingerprint(current), snapshot = await store.read();
       if (token() !== current || epoch !== generation) return false;
       if (!TripOffline.validSnapshot(snapshot, owner)) {
-        if (snapshot?.owner === owner && snapshot.expiresAt <= Date.now()) await clearSession(current);
-        else if (snapshot) await store.clear(snapshot.owner);
+        if (snapshot) await store.clear(snapshot.owner);
         return false;
       }
-      expiresAt = snapshot.expiresAt; savedAt = snapshot.savedAt;
+      dataExpiresAt = TripOffline.tripExpiry(snapshot.data.config.FechaFin); savedAt = snapshot.savedAt;
       App.loggedIn = true; App.userRole = snapshot.data.userRole;
       onDataLoaded(snapshot.data);
       armExpiry(); updateUI();
@@ -79,16 +94,22 @@ function createPWA(App, hooks) {
     if (!TripOffline.validData(data)) throw new Error('No se pudo actualizar el viaje');
     if (token() !== current) throw new Error('La sesión cambió');
     if (localSettings && App.data) data.settings = Object.assign({}, App.settings);
+    dataExpiresAt = TripOffline.tripExpiry(data.config.FechaFin);
     savedAt = Date.now();
     verifiedToken = current;
-    armExpiry(); updateUI();
-    // Un backend anterior permite uso online, pero no ofrece un vencimiento fiable para offline.
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return;
+    App.loggedIn = true;
+    clearTimeout(expiryTimer);
+    updateUI();
+    if (dataExpiresAt <= Date.now()) {
+      try { await store.clear(await TripOffline.fingerprint(current)); } catch (_) {}
+      return;
+    }
+    armExpiry();
     var clean = Object.assign({}, data); delete clean.userCode;
     try {
       var owner = await TripOffline.fingerprint(current);
-      await store.save({ version: TripOffline.FORMAT, owner: owner, expiresAt: expiresAt, savedAt: savedAt, data: clean },
-        function () { return token() === current && expiresAt > Date.now(); });
+      await store.save({ version: TripOffline.FORMAT, owner: owner, expiresAt: dataExpiresAt, savedAt: savedAt, data: clean },
+        function () { return token() === current && dataExpiresAt > Date.now(); });
     } catch (_) {
       if (!storageWarning) { storageWarning = true; showToast('No se pudo guardar el viaje para usar sin conexión'); }
     }
@@ -96,10 +117,10 @@ function createPWA(App, hooks) {
   async function session(result, current) {
     if (token() !== current) throw new Error('La sesión cambió');
     started = true;
-    expiresAt = Number.isFinite(result.expiresAt) ? result.expiresAt : 0;
+    var serverExpiry = Number(result.expiresAt);
+    sessionExpiresAt = Number.isFinite(serverExpiry) && serverExpiry > 0 ? serverExpiry : 0;
     verifiedToken = null;
-    armExpiry();
-    if (expiresAt && expiresAt <= Date.now()) { await clearSession(current); throw new Error('La sesión venció'); }
+    if (sessionExpiresAt && sessionExpiresAt <= Date.now()) { await clearSession(current); throw new Error('La sesión venció'); }
     // No volver a mostrar información de master si el servidor cambió sus permisos.
     if (App.data && App.userRole !== result.rol) {
       App.data = null; App.userRole = result.rol;
@@ -114,7 +135,7 @@ function createPWA(App, hooks) {
   async function refresh() {
     var current = token();
     if (!started || !current) return;
-    if (expiresAt && expiresAt <= Date.now()) { await clearSession(current); return; }
+    if (dataExpiresAt && dataExpiresAt <= Date.now()) await expireData(current);
     if (!navigator.onLine) return;
     if (refreshing?.token === current) return refreshing.promise;
     var epoch = generation;
@@ -153,7 +174,9 @@ function createPWA(App, hooks) {
     }).catch(function () {});
   }
   function lostConnection() {
-    verifiedToken = null; updateUI();
+    verifiedToken = null;
+    if (App.data && TripOffline.tripExpiry(App.data.config.FechaFin) <= Date.now()) void expireData();
+    updateUI();
     if (App.view === 'mapa' && App.data) setView('mapa');
   }
   function requireConnection() {
@@ -205,7 +228,7 @@ function createPWA(App, hooks) {
   });
   window.addEventListener('storage', async function (event) {
     if (event.key !== 'europa2026_gh_token') return;
-    generation++; started = false; verifiedToken = null; expiresAt = 0; savedAt = 0; localSettings = false;
+    generation++; started = false; verifiedToken = null; dataExpiresAt = 0; sessionExpiresAt = 0; savedAt = 0; localSettings = false;
     clearTimeout(expiryTimer);
     resetView();
     try { if (event.oldValue) await store.clear(await TripOffline.fingerprint(event.oldValue)); } catch (_) {}
