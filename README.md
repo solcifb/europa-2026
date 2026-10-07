@@ -8,7 +8,9 @@ Ingresá una vez con conexión y dejá que cargue el viaje. En las siguientes ap
 
 Sin conexión se pueden consultar itinerario, plan, búsqueda, lista de lugares, teléfonos, datos y enlaces de documentos, y los estados de checks de la última descarga. Las imágenes externas pueden no aparecer. El mapa interactivo y los archivos enlazados necesitan internet.
 
-Las altas, ediciones, checks y administración requieren sesión validada y viaje actualizado online. No se guardan operaciones pendientes. Tema y zona horaria pueden cambiar localmente sin conexión.
+Durante la actualización, un indicador de carga ocupa el lugar del botón «+», que vuelve al terminar si la sesión permite agregar.
+
+Las altas, ediciones, checks y administración requieren sesión validada y viaje actualizado online. Al guardar un lugar o agregar/editar un evento, se descarga nuevamente el viaje y se renueva la copia offline. Las respuestas anteriores al cambio se descartan. Si el cambio se guardó pero falló la descarga, se muestra un aviso para reabrir con conexión. No se guardan operaciones pendientes. Tema y zona horaria pueden cambiar localmente sin conexión.
 
 La copia guardada vence en `config.FechaFin + 24 horas`. `FechaFin` se interpreta a medianoche en la zona horaria del dispositivo: si termina el 15 de octubre, la copia vence el 16 a las 00:00. Cada descarga usa la fecha de finalización del viaje, independientemente del vencimiento de la sesión. Las copias existentes se evalúan con esta misma regla al reabrir. Cerrar sesión borra la copia local, incluso offline, y limpia otras pestañas. La revocación del servidor y los cambios remotos de permisos se detectan al reconectar. El navegador puede eliminar los datos locales, por ejemplo al borrar los datos del sitio; en ese caso hay que descargar el viaje nuevamente.
 
@@ -33,12 +35,13 @@ node tests/notifications.cjs
 node tests/pwa.cjs
 ```
 
-Las pruebas verifican políticas de sesión, render antes de red, recuperación offline, aislamiento, preferencias, almacenamiento fallido y notificaciones del backend. Las pruebas PWA usan almacenamiento simulado; IndexedDB y Cache Storage deben comprobarse también en navegador.
+Las pruebas verifican políticas de sesión, render antes de red, recuperación offline, aislamiento, preferencias, almacenamiento fallido, recarga tras guardar, respuestas fuera de orden, fin del indicador de carga ante errores y notificaciones del backend. Las pruebas PWA usan almacenamiento simulado; IndexedDB y Cache Storage deben comprobarse también en navegador.
 
 Comprobaciones de aceptación en navegador:
 
 1. Ingresar online, esperar que cargue el viaje, cerrar y reabrir sin red. Consultar plan, búsqueda, lugares, teléfonos y checks; confirmar que no se emiten escrituras.
-2. Simular una API lenta o caída: el viaje guardado debe aparecer antes de completar la validación. Al actualizar, conservar vista, filtros y día.
+2. Simular una API lenta o caída: el viaje guardado debe aparecer antes de completar la validación. Al actualizar, conservar vista, filtros y día; el spinner debe reemplazar al «+» y desaparecer al terminar.
+   Agregar un lugar, agregar un evento y editar otro: comprobar los cambios en la misma pantalla y al reabrir offline. Probar también una descarga fallida después de un guardado exitoso.
 3. Verificar primer acceso offline, vencimiento, revocación al reconectar, cambio de usuario y logout entre dos pestañas.
 4. Instalar en Android/Chrome, iPhone/Safari y escritorio; probar push con la aplicación cerrada y apertura desde la notificación.
 5. Publicar una versión nueva: el aviso debe permitir seguir leyendo hasta aceptar **Actualizar**.
@@ -47,7 +50,7 @@ La verificación local se realizó con Chrome: IndexedDB real, reapertura con re
 
 ## Publicación
 
-1. Incorporar los cambios de `Code.gs` al proyecto existente de Apps Script, conservando sus helpers y backend original. Publicar una nueva versión del despliegue usado por Cloudflare.
+1. Incorporar los cambios de `Code.gs` al proyecto existente de Apps Script, conservando sus helpers y backend original. Publicar una nueva versión del despliegue usado por Cloudflare. Las altas y ediciones confirman las escrituras de la planilla antes de responder, para permitir la descarga inmediata posterior.
 2. Comprobar que `getAppData` devuelve `config.FechaFin` con formato `YYYY-MM-DD`. `expiresAt` de login/sesión puede seguir utilizándose para validar cambios online, pero no condiciona el guardado ni la lectura offline.
 3. Publicar los archivos del frontend en la misma base de GitHub Pages. Las rutas relativas admiten tanto raíz como `/europa-2026/`.
 4. Comprobar en HTTPS manifest, iconos y `sw.js`; luego descargar un viaje y reabrir sin red.

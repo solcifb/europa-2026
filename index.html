@@ -29,24 +29,46 @@
     </script>
     <script>
       (function () {
-        // Apps Script's HtmlService iframe wrapper can make CSS media queries unreliable;
-        // drive breakpoints from actual measured width instead.
-        function updateBreakpoints() {
-          var w = (window.visualViewport && window.visualViewport.width) ||
-            document.documentElement.clientWidth || window.innerWidth || 0;
-          var c = document.documentElement.classList;
-          c.toggle('bp-tablet', w >= 600);
-          c.toggle('bp-desktop', w >= 1000);
-          c.toggle('bp-desktop-lg', w >= 1440);
+        var scheduled = false;
+        function updateViewport() {
+          var viewport = window.visualViewport;
+          var unzoomed = !viewport || Math.abs(viewport.scale - 1) < 0.01;
+          var root = document.documentElement;
+          var w = (unzoomed && viewport && viewport.width) ||
+            root.clientWidth || window.innerWidth || 0;
+          root.classList.toggle('bp-tablet', w >= 600);
+          root.classList.toggle('bp-desktop', w >= 1000);
+          root.classList.toggle('bp-desktop-lg', w >= 1440);
+          // No modificar el diseño mientras el usuario amplía la página.
+          if (unzoomed) {
+            var h = (viewport && viewport.height) || window.innerHeight || root.clientHeight;
+            if (h > 0) root.style.setProperty('--app-height', h + 'px');
+          }
         }
-        updateBreakpoints();
-        window.addEventListener('resize', updateBreakpoints);
-        window.addEventListener('orientationchange', updateBreakpoints);
-        document.addEventListener('DOMContentLoaded', updateBreakpoints);
-        window.addEventListener('load', updateBreakpoints);
-        // Apps Script iframe can settle its final size slightly after load; re-check shortly after.
-        setTimeout(updateBreakpoints, 300);
-        setTimeout(updateBreakpoints, 1000);
+        function scheduleUpdate() {
+          if (scheduled) return;
+          scheduled = true;
+          window.requestAnimationFrame(function () {
+            scheduled = false;
+            updateViewport();
+          });
+        }
+        updateViewport();
+        window.addEventListener('resize', scheduleUpdate);
+        window.addEventListener('orientationchange', scheduleUpdate);
+        window.addEventListener('pageshow', scheduleUpdate);
+        window.addEventListener('focus', scheduleUpdate);
+        document.addEventListener('DOMContentLoaded', scheduleUpdate);
+        window.addEventListener('load', scheduleUpdate);
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') scheduleUpdate();
+        });
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', scheduleUpdate);
+          window.visualViewport.addEventListener('scroll', scheduleUpdate);
+        }
+        setTimeout(scheduleUpdate, 300);
+        setTimeout(scheduleUpdate, 1000);
       })();
     </script>
     <style>
@@ -69,10 +91,13 @@
     padding: 0;
     height: 100%;
     width: 100%;
-    overflow-x: hidden;
+    overflow: hidden;
+    overscroll-behavior: none;
     background: #e9e4d8;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
+
+  body { position: fixed; inset: 0; }
 
   #app-frame {
     --bg: #f6f2ea;
@@ -91,6 +116,8 @@
     margin: 0 auto;
     height: 100vh;
     height: 100dvh;
+    height: var(--app-height, 100dvh);
+    padding-top: env(safe-area-inset-top, 0px);
     background: var(--bg);
     color: var(--text);
     display: flex;
@@ -176,10 +203,21 @@
   .icon-btn i,
   .icon-btn svg { width: 20px; height: 20px; color: inherit; stroke: currentColor; }
   .icon-btn:active { background: var(--border); }
+  .trip-action { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; }
+  .trip-loading {
+    width: 20px; height: 20px; border: 2px solid var(--border);
+    border-top-color: var(--primary); border-radius: 50%;
+    animation: trip-spin .8s linear infinite;
+  }
+  @keyframes trip-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .trip-loading { animation-duration: 2s; } }
 
   #view-container {
-    flex: 1 1 auto;
+    flex: 1 1 0%;
+    min-height: 0;
+    min-width: 0;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
   }
   .view-root { padding: 0 0 24px; min-height: 100%; }
@@ -188,7 +226,8 @@
   /* ---------- Bottom nav ---------- */
   .bottom-nav {
     flex: 0 0 auto;
-    height: var(--nav-height);
+    height: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--surface);
     border-top: 1px solid var(--border);
     display: flex;
@@ -557,14 +596,15 @@
 
   /* ---------- Overlays (search / settings) ---------- */
   .overlay {
-    position: absolute; inset: 0; background: rgba(15,18,28,0.5);
-    display: flex; align-items: flex-end; z-index: 20;
+    position: absolute; inset: 0; background: rgba(15,18,28,0.8);
+    display: flex; align-items: flex-end; z-index: 20; backdrop-filter: blur(4px); 
+
   }
   .hidden,
   .overlay.hidden { display: none; }
   .overlay-panel {
     background: var(--bg); width: 100%; max-height: 82%; border-radius: 22px 22px 0 0;
-    padding: 16px 20px 24px; display: flex; flex-direction: column; overflow: hidden;
+    padding: 16px 20px calc(24px + env(safe-area-inset-bottom, 0px)); min-height: 0; display: flex; flex-direction: column; overflow: hidden;
   }
   .overlay-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .overlay-title { font-weight: 800; font-size: 16px; flex: 1; }
@@ -698,8 +738,6 @@
   /* ========== DESKTOP ========== */
   html.bp-desktop, html.bp-desktop body { background: #1a1d28; }
   html.bp-desktop #app-frame {
-    height: 100vh;
-    height: 100dvh;
     flex-direction: column;
     box-shadow: none;
     border-radius: 0;
@@ -768,8 +806,8 @@
   html.bp-desktop .mapa-tabs { margin: 12px 32px 8px; }
 
   /* Modals centered */
-  html.bp-desktop .overlay { align-items: center; }
-  html.bp-desktop #add-overlay .overlay-panel, html.bp-desktop #edit-overlay .overlay-panel {
+  html.bp-desktop .overlay { justify-content: center; align-items: center; }
+  html.bp-desktop #add-overlay .overlay-panel, html.bp-desktop #edit-overlay .overlay-panel, html.bp-desktop #settings-overlay .settings-panel {
     max-width: 520px; max-height: 85vh; border-radius: 24px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
   }
@@ -800,7 +838,10 @@
         <button class="icon-btn" id="btn-search" title="Buscar" aria-label="Buscar"><i data-lucide="search"></i></button>
         <div class="topbar-title" id="topbar-title">Europa 2026</div>
         <div class="topbar-right">
-          <button class="icon-btn" id="btn-add" title="Agregar" aria-label="Agregar" style="display:none"><i data-lucide="plus"></i></button>
+          <div class="trip-action" id="trip-action" hidden>
+            <span class="trip-loading" id="trip-loading" role="status" aria-label="Actualizando viaje" hidden></span>
+            <button class="icon-btn" id="btn-add" title="Agregar" aria-label="Agregar" style="display:none"><i data-lucide="plus"></i></button>
+          </div>
           <button class="icon-btn" id="btn-settings" title="Ajustes" aria-label="Ajustes"><i data-lucide="settings"></i></button>
         </div>
       </header>
@@ -1287,41 +1328,52 @@
       throw new Error('Necesitás conexión para realizar cambios');
     }
     if (!navigator.onLine) throw new Error('Sin conexión');
-    var response;
+    var read = action === 'getAppData' || action === 'checkSession' ? PWA.beginRead(action, token) : null;
     try {
-      response = await fetch(GH_API_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: action, payload: payload, token: token }),
-        signal: AbortSignal.timeout(15000)
-      });
-    } catch (error) { PWA.lostConnection(); throw error; }
-    if (PWA.token() !== token) throw new Error('La sesión cambió');
-    var envelope;
-    try { envelope = await response.json(); }
-    catch (_) { throw new Error('La API devolvió una respuesta inválida'); }
-    if (PWA.token() !== token) throw new Error('La sesión cambió');
-    if (!response.ok || !envelope.ok) {
-      PWA.lostConnection();
-      throw new Error(envelope.error || ('Error HTTP ' + response.status));
-    }
-    var result = envelope.result;
-    if (!result || typeof result !== 'object') throw new Error('La API devolvió una respuesta inválida');
-    if (result.error === 'login_required' || result.logged === false) {
-      await PWA.clearSession(token);
-      if (PWA.token()) throw new Error('La sesión cambió');
+      var response;
+      try {
+        response = await fetch(GH_API_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, payload: payload, token: token }),
+          signal: AbortSignal.timeout(15000)
+        });
+      } catch (error) {
+        PWA.assertRead(read);
+        if (PWA.token() === token) PWA.lostConnection();
+        throw error;
+      }
+      PWA.assertRead(read);
+      if (PWA.token() !== token) throw new Error('La sesión cambió');
+      var envelope;
+      try { envelope = await response.json(); }
+      catch (_) { throw new Error('La API devolvió una respuesta inválida'); }
+      if (PWA.token() !== token) throw new Error('La sesión cambió');
+      PWA.assertRead(read);
+      if (!response.ok || !envelope.ok) {
+        PWA.lostConnection();
+        throw new Error(envelope.error || ('Error HTTP ' + response.status));
+      }
+      var result = envelope.result;
+      if (!result || typeof result !== 'object') throw new Error('La API devolvió una respuesta inválida');
+      if (result.error === 'login_required' || result.logged === false) {
+        await PWA.clearSession(token);
+        if (PWA.token()) throw new Error('La sesión cambió');
+        return result;
+      }
+      if (action === 'login' && result.ok && result.token) {
+        await PWA.clearSession(token);
+        localStorage.setItem(GH_TOKEN_KEY, result.token);
+        await PWA.session(result, result.token);
+      } else if (action === 'checkSession' && result.logged) {
+        await PWA.session(result, token);
+      } else if (action === 'getAppData' && !result.error) {
+        await PWA.acceptData(result, token, read);
+      }
+      if (result.ok && ['marcarCheck', 'agregarLugar', 'agregarEvento', 'actualizarEvento'].indexOf(action) !== -1) PWA.dataChanged(token);
+      PWA.assertRead(read);
+      if (action !== 'login' && action !== 'checkSession' && PWA.token() !== token) throw new Error('La sesión cambió');
       return result;
-    }
-    if (action === 'login' && result.ok && result.token) {
-      await PWA.clearSession(token);
-      localStorage.setItem(GH_TOKEN_KEY, result.token);
-      await PWA.session(result, result.token);
-    } else if (action === 'checkSession' && result.logged) {
-      await PWA.session(result, token);
-    } else if (action === 'getAppData' && !result.error) {
-      await PWA.acceptData(result, token);
-    }
-    if (action !== 'login' && action !== 'checkSession' && PWA.token() !== token) throw new Error('La sesión cambió');
-    return result;
+    } finally { if (read) PWA.endRead(read); }
   }
 
   function ghPayloadForCall(name, args) {
@@ -1524,9 +1576,6 @@
     App.dayIndex = matchingDay >= 0 ? matchingDay : defaultDayIndex();
     document.getElementById('topbar-title').textContent = data.config.NombreViaje || 'Europa 2026';
 
-    // Show add button only for master
-    document.getElementById('btn-add').style.display = App.userRole === 'master' ? '' : 'none';
-    
     renderBottomNav();
 
     var initialView = 'home';
@@ -1697,10 +1746,10 @@
     var nav = document.getElementById('bottom-nav');
     var checksCount = (App.data && App.data.checks) ? App.data.checks.length : 0;
 
-var items = NAV_ITEMS.filter(function (item) {
-  return item.id !== 'checks' ||
-    (App.userRole === 'master' && checksCount > 0);
-});
+    var items = NAV_ITEMS.filter(function (item) {
+      return item.id !== 'checks' ||
+        (App.userRole === 'master' && checksCount > 0);
+    });
 
     items.sort(function (a, b) {
       if (a.id === 'checks') return 1;
@@ -1717,15 +1766,18 @@ var items = NAV_ITEMS.filter(function (item) {
         '<span class="nav-icon">' + icon(item.icon) + badge + '</span><span>' + item.label + '</span></button>';
     }).join('');
     nav.querySelectorAll('.nav-item').forEach(function (btn) {
-      btn.addEventListener('click', function () { setView(btn.getAttribute('data-nav')); });
+      btn.addEventListener('click', function () {
+        setView(btn.getAttribute('data-nav')); 
+      });
     });
     refreshIcons();
   }
 
   function setView(view) {
-if (view === 'checks' && App.userRole !== 'master') {
-  view = 'home';
-}
+
+    if (view === 'checks' && App.userRole !== 'master') {
+      view = 'home';
+    }
 
     App.view = view;
     document.querySelectorAll('.nav-item').forEach(function (btn) {
@@ -1767,7 +1819,7 @@ if (view === 'checks' && App.userRole !== 'master') {
       var badgeHtml = badgeIcons.map(function (ic) { return icon(ic, 12); }).join('');
       var d = day.jsDate;
       var selected = day.index - 1 === App.dayIndex;
-      return '<div class="day-pill' + (selected ? ' selected' : '') + '" data-day="' + (day.index - 1) + '">' +
+      return '<div class="day-pill' + (selected ? ' selected' : '') + '" data-haptic data-day="' + (day.index - 1) + '">' +
         '<div class="dow">' + WEEKDAY_SHORT[d.getDay()] + '</div>' +
         '<div class="num">' + d.getDate() + '</div>' +
         '<div class="dtag">D' + day.index + '</div>' +
@@ -1777,7 +1829,7 @@ if (view === 'checks' && App.userRole !== 'master') {
 
     var destinoStrip = (App.data.destinos || []).map(function (d) {
       var style = d.ImagenURL ? 'background-image:url(\'' + d.ImagenURL + '\')' : '';
-      return '<div class="destino-card" style="' + style + '" data-destino="' + escapeHtml(d.Nombre) + '"><span>' + escapeHtml(d.Nombre) + '</span></div>';
+      return '<div class="destino-card" style="' + style + '" data-haptic data-destino="' + escapeHtml(d.Nombre) + '"><span>' + escapeHtml(d.Nombre) + '</span></div>';
     }).join('');
 
     return '' +
@@ -2112,7 +2164,7 @@ if (view === 'checks' && App.userRole !== 'master') {
       if (!events.length) return '';
       var items = events.map(function (ev) {
         var iconName = ICONS[ev.Tipo] || 'map-pin';
-        return '<div class="plan-item" data-goto-day="' + (day.index - 1) + '">' +
+        return '<div class="plan-item" data-haptic data-goto-day="' + (day.index - 1) + '">' +
           '<div class="event-icon">' + icon(iconName, 16) + '</div>' +
           '<div class="plan-info">' +
             '<div class="plan-title">' + escapeHtml(ev.Titulo) + '</div>' +
@@ -2523,6 +2575,15 @@ if (view === 'checks' && App.userRole !== 'master') {
   /* ============================= Global UI (search / settings / theme) ============================= */
 
   function bindGlobalUI() {
+    document.addEventListener('click', function (e) {
+      if (!e.isTrusted || e.defaultPrevented) return;
+      var control = e.composedPath().find(function (el) {
+        return el instanceof Element && el.matches('button, a[href], [data-haptic]');
+      });
+      if (!control || control.matches(':disabled, [aria-disabled="true"]') || control.closest('[data-no-haptic]')) return;
+      hapticFeedback();
+    });
+
     document.getElementById('btn-search').addEventListener('click', openSearch);
     document.getElementById('btn-close-search').addEventListener('click', closeSearch);
     document.getElementById('search-input').addEventListener('input', function (e) { runSearch(e.target.value); });
@@ -2662,6 +2723,7 @@ if (view === 'checks' && App.userRole !== 'master') {
 
   function applyTheme(tema) {
     var isDark = tema === 'dark';
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', isDark ? '#1c2333' : '#f6f2ea');
     document.getElementById('app-frame').setAttribute('data-theme', isDark ? 'dark' : 'light');
     if (document.documentElement && document.documentElement.style) {
       document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
@@ -2696,7 +2758,7 @@ if (view === 'checks' && App.userRole !== 'master') {
 
     box.innerHTML = results.map(function (ev) {
       var iconName = ICONS[ev.Tipo] || 'map-pin';
-      return '<div class="search-result-item" data-fecha="' + escapeHtml(ev.Fecha) + '">' +
+      return '<div class="search-result-item" data-haptic data-fecha="' + escapeHtml(ev.Fecha) + '">' +
         '<div class="event-icon" style="width:32px;height:32px">' + icon(iconName, 14) + '</div>' +
         '<div><div class="sr-title">' + escapeHtml(ev.Titulo) + '</div>' +
         '<div class="sr-sub">' + escapeHtml(ev.Fecha) + ' · ' + escapeHtml(ev.Hora || '') + ' · ' + escapeHtml(ev.Destino || '') + '</div></div>' +
@@ -2768,6 +2830,16 @@ if (view === 'checks' && App.userRole !== 'master') {
     el.style.color = isError ? '#dc2626' : 'var(--accent)';
   }
 
+  async function refreshAfterSave(overlay) {
+    // No reutilizar una descarga que empezó antes de guardar.
+    var current = PWA.token();
+    var updated = await PWA.refresh({ force: true });
+    if (PWA.token() !== current) return;
+    if (overlay === 'edit') closeEditOverlay();
+    else closeAddOverlay();
+    if (!updated) showToast('Cambio guardado. No se pudo actualizar el viaje; reabrí la app con conexión.', 6000);
+  }
+
   function handleAddLugar(e) {
     e.preventDefault();
     if (!PWA.requireConnection()) return;
@@ -2790,7 +2862,7 @@ if (view === 'checks' && App.userRole !== 'master') {
       if (result.ok) {
         showAddStatus('Lugar guardado ✓');
         form.reset();
-        google.script.run.withSuccessHandler(function (d) { onDataLoaded(d); }).getAppData();
+        void refreshAfterSave('add');
       } else {
         showAddStatus(result.error || 'Error al guardar', true);
       }
@@ -2835,7 +2907,7 @@ if (view === 'checks' && App.userRole !== 'master') {
           form.reset();
           document.getElementById('voucher-file-name').style.display = 'none';
           if (fileInput) fileInput.value = '';
-          google.script.run.withSuccessHandler(function (d) { onDataLoaded(d); }).getAppData();
+          void refreshAfterSave('add');
         } else {
           showAddStatus(result.error || 'Error al guardar', true);
         }
@@ -2937,7 +3009,7 @@ if (view === 'checks' && App.userRole !== 'master') {
         btn.disabled = false; btn.textContent = 'Guardar cambios';
         if (result.ok) {
           showEditStatus('Evento actualizado ✓');
-          google.script.run.withSuccessHandler(function (d) { onDataLoaded(d); }).getAppData();
+          void refreshAfterSave('edit');
         } else {
           showEditStatus(result.error || 'Error al guardar', true);
         }
@@ -2988,12 +3060,16 @@ if (view === 'checks' && App.userRole !== 'master') {
   }
 
   var toastTimer = null;
-  function showToast(msg) {
+  function showToast(msg, duration) {
     var t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.remove('hidden');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.add('hidden'); }, 1800);
+    toastTimer = setTimeout(function () { t.classList.add('hidden'); }, duration || 1800);
+  }
+
+  function hapticFeedback() {
+    if (navigator.vibrate) navigator.vibrate(50);
   }
 
 })();
